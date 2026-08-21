@@ -1,0 +1,218 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { usePathname } from 'next/navigation';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { Menu, X } from 'lucide-react';
+
+export function Header() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  const menuVariants: Variants = {
+    hidden: { x: '100%', opacity: 0 },
+    visible: {
+      x: 0,
+      opacity: 1,
+      transition: {
+        type: 'spring',
+        stiffness: 350,
+        damping: 35,
+        duration: 0.3,
+      },
+    },
+    exit: {
+      x: '100%',
+      opacity: 0,
+      transition: {
+        type: 'spring',
+        stiffness: 350,
+        damping: 35,
+        duration: 0.2,
+      },
+    },
+  };
+
+  const backdropVariants: Variants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1 },
+    exit: { opacity: 0 },
+  };
+
+  const menuItemVariants: Variants = {
+    hidden: { opacity: 0, x: 20 },
+    visible: (i: number) => ({
+      opacity: 1,
+      x: 0,
+      transition: {
+        delay: i * 0.1,
+        duration: 0.3,
+        ease: 'easeOut',
+      },
+    }),
+  };
+
+  const navLinks = [
+    { name: 'Solutions', href: '/solutions' },
+    { name: 'Features', href: '/features' },
+    { name: 'Pricing', href: '/pricing' },
+  ];
+
+  return (
+    <>
+      <motion.header
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="fixed top-0 left-0 right-0 z-50 border-b border-border/30 backdrop-blur-md bg-background/80"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            
+            {/* Logo with nodelec_logo.jpg */}
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="relative w-9 h-9 transition-transform group-hover:scale-105">
+                <Image
+                  src="/nodelec_logo.jpg"
+                  alt="Nodelec Logo"
+                  fill
+                  className="object-contain rounded-md"
+                  priority
+                />
+              </div>
+              <span className="font-bold text-xl text-foreground tracking-tight">Nodelec</span>
+            </Link>
+
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-8">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  className={`text-sm font-medium transition-colors relative ${
+                    pathname === link.href
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {link.name}
+                  {pathname === link.href && (
+                    <motion.div 
+                      layoutId="activeNav"
+                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" 
+                    />
+                  )}
+                </Link>
+              ))}
+            </nav>
+
+            {/* Desktop CTA Button */}
+            <div className="hidden md:flex items-center gap-4">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              >
+                <Link href="/contact">
+                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 px-6 font-semibold shadow-lg shadow-primary/20">
+                    Start Your 15-Day Pilot
+                  </Button>
+                </Link>
+              </motion.div>
+            </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-foreground hover:text-primary transition-colors focus:outline-none"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
+        </div>
+      </motion.header>
+
+      {/* Mobile Menu Backdrop */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            variants={backdropVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Menu Slide-Over */}
+      <AnimatePresence mode="wait">
+        {mobileMenuOpen && (
+          <motion.div
+            variants={menuVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="fixed right-0 top-0 h-screen w-full max-w-sm bg-card border-l border-border/30 shadow-2xl z-50 md:hidden flex flex-col"
+          >
+            <div className="flex items-center justify-between p-6 border-b border-border/30">
+              <div className="flex items-center gap-2">
+                <Image src="/nodelec_logo.jpg" width={24} height={24} alt="Logo" className="rounded" />
+                <span className="font-bold text-foreground">Nodelec</span>
+              </div>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-2 text-foreground hover:text-primary transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <nav className="flex flex-col gap-2 p-6 flex-1">
+              {navLinks.map((link, i) => (
+                <motion.div
+                  key={link.name}
+                  custom={i}
+                  variants={menuItemVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <Link
+                    href={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`block px-4 py-4 text-lg font-medium rounded-xl transition-all ${
+                      pathname === link.href
+                        ? 'text-primary bg-primary/10'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                    }`}
+                  >
+                    {link.name}
+                  </Link>
+                </motion.div>
+              ))}
+            </nav>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="p-6 border-t border-border/30"
+            >
+              <Button
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full bg-primary text-primary-foreground py-6 text-lg font-bold shadow-xl shadow-primary/20"
+              >
+                Start Your Pilot
+              </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
