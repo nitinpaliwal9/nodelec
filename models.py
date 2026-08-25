@@ -137,28 +137,93 @@ class MailboxConnection(Base):
 
 class ErpConnection(Base):
     """
-    An organization's own ERP instance (currently: Tally, reached over
-    its local XML HTTP gateway -- no cloud account or third-party
-    credential involved, since Tally runs on the distributor's own
-    machine/network). One org can have one connection per erp_type.
+    An organization's own ERP/inventory system. Tally is the only
+    platform actually wired up end-to-end (either pulled directly over
+    its local XML HTTP gateway via erp/sync.py, when our server can
+    reach the distributor's LAN, or pushed by the Nodelec Tally Agent
+    script over tally-agent-key auth when it can't -- see
+    /api/integrations/erp/tally-agent/push). "sap_b1" and
+    "custom_cloud_api" are selectable in the onboarding UI so the
+    platform choice is captured up front, but neither has a real
+    connector yet -- host/port/company_name stay null for them.
+    One org can have one connection per erp_type.
     """
     __tablename__ = "erp_connections"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    erp_type = Column(String, nullable=False, default="tally")  # extensible: sap/oracle/netsuite/odoo later
+    erp_type = Column(String, nullable=False, default="tally")  # "tally" | "sap_b1" | "custom_cloud_api"
     label = Column(String, nullable=True)
 
-    host = Column(String, nullable=False)  # e.g. "localhost" or the distributor's LAN IP running Tally
-    port = Column(Integer, nullable=False, default=9000)
-    company_name = Column(String, nullable=False)  # Tally requires specifying which company to query
+    host = Column(String, nullable=True)  # e.g. "localhost" or the distributor's LAN IP running Tally -- tally only
+    port = Column(Integer, nullable=True, default=9000)
+    company_name = Column(String, nullable=True)  # Tally requires specifying which company to query
+
+    # SHA-256 hash of the Tally Agent Key, same non-recoverable pattern
+    # as ApiKey.key_hash -- the raw key is shown once when generated
+    # (see /api/integrations/erp/tally-agent-key) and never stored.
+    # Only ever set for erp_type == "tally".
+    agent_key_hash = Column(String, unique=True, nullable=True, index=True)
 
     is_active = Column(Boolean, nullable=False, default=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     last_sync_status = Column(String, nullable=True)  # "success" or "failed: <reason>"
+
+    organization = relationship("Organization")
+
+
+class WhatsAppConnection(Base):
+    """
+    An organization's WhatsApp Business Cloud API credentials, for
+    receiving BOMs/RFQs sent to their WhatsApp Business number the
+    same way email intake works for inbox attachments. One row per
+    organization -- like OrganizationRules, organization_id is the
+    primary key rather than a separate id+FK since there's only ever
+    one active set of credentials.
+
+    Nothing in this codebase actually calls the Graph API with these
+    yet (no webhook receiver, no outbound send) -- this table exists
+    so the onboarding UI has somewhere real to save what a customer
+    enters, ahead of that integration being built.
+    """
+    __tablename__ = "whatsapp_connections"
+
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+
+    phone_number_id = Column(String, nullable=False)
+    business_account_id = Column(String, nullable=False)
+
+    # Fernet-encrypted (crypto_utils.py), not plaintext -- same
+    # tradeoff as MailboxConnection.encrypted_password: real
+    # improvement over plaintext, not a substitute for a KMS.
+    encrypted_system_token = Column(String, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    organization = relationship("Organization")
+
+
+class EmailOAuthConnection(Base):
+    """
+    Records that an organization clicked through the mock Google/
+    Outlook "Connect" button in the onboarding UI. Deliberately
+    separate from MailboxConnection (the real, working IMAP intake
+    path that email_intake/poller.py actually polls) -- no real OAuth
+    handshake happens here, no token is stored, and nothing polls
+    this table. It exists purely so the UI can show a persisted
+    "connected" state instead of losing it on refresh, while staying
+    honest that it isn't wired to a real mailbox.
+    """
+    __tablename__ = "email_oauth_connections"
+
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+
+    provider = Column(String, nullable=False)  # "google" | "outlook"
+    connected_at = Column(DateTime(timezone=True), server_default=func.now())
 
     organization = relationship("Organization")
 

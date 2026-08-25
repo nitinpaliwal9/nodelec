@@ -81,3 +81,46 @@ def get_current_organization(
     db.commit()
 
     return api_key.organization
+
+
+# ==========================================================
+# TALLY AGENT AUTH
+# ==========================================================
+# Separate from the org's own Bearer API key: the Nodelec Tally Agent
+# script runs unattended on a distributor's own machine and pushes
+# inventory, so it authenticates with a dedicated, narrowly-scoped
+# key (models.ErpConnection.agent_key_hash) rather than the org's
+# general-purpose API key -- a leaked agent key can only push stock
+# data, not read review queues, files, or anything else.
+
+def get_erp_connection_from_agent_key(
+    x_tally_agent_key: str = Header(default=None),
+    db: Session = Depends(get_db)
+) -> models.ErpConnection:
+
+    if not x_tally_agent_key:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Missing X-Tally-Agent-Key header"
+        )
+
+    key_hash = hash_api_key(x_tally_agent_key.strip())
+
+    connection = (
+        db.query(models.ErpConnection)
+        .filter(
+            models.ErpConnection.agent_key_hash == key_hash,
+            models.ErpConnection.is_active == True  # noqa: E712
+        )
+        .first()
+    )
+
+    if not connection:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or deactivated Tally agent key"
+        )
+
+    return connection
