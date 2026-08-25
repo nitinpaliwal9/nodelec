@@ -11,6 +11,11 @@ import models
 
 from engine import BOMEngine
 
+from parsers.ingestion_gateway import (
+    load_raw_rows,
+    build_dataframe_from_raw_rows
+)
+
 
 # ==========================================================
 # CANONICAL COLUMN ALIASES
@@ -34,7 +39,9 @@ COLUMN_ALIASES = {
 
     "manufacturer": [
         "manufacturer",
+        "manufacturer name",
         "mfr",
+        "mfr name",
         "mfg",
         "brand"
     ],
@@ -112,29 +119,33 @@ def map_catalog_columns(df: pd.DataFrame) -> pd.DataFrame:
 # ==========================================================
 
 def load_catalog_dataframe(file_path: str) -> pd.DataFrame:
+    """
+    Delegates header detection to the same pipeline BOM uploads use
+    (parsers.ingestion_gateway) instead of a plain pd.read_excel/
+    read_csv, which assumed row 0 was always the header -- real
+    catalog-shaped files (a KiCad/EDA BOM export repurposed as a
+    catalog seed, a distributor sheet with a title row above the
+    real headers, ...) commonly aren't that clean. Also picks up
+    PDF support and multi-row header fusion for free.
+    """
 
     extension = os.path.splitext(file_path)[1].lower()
 
-    if extension in (".xlsx", ".xls"):
-        df = pd.read_excel(file_path)
-
-    elif extension == ".csv":
-        df = pd.read_csv(file_path)
-
-    else:
+    if extension not in (".xlsx", ".xls", ".csv", ".pdf"):
         raise ValueError(
             f"Unsupported catalog file type '{extension}' "
-            f"(expected .csv, .xlsx, or .xls)"
+            f"(expected .csv, .xlsx, .xls, or .pdf)"
         )
 
-    df.columns = [
-        re.sub(
-            r"\s+",
-            " ",
-            str(col).replace("\n", " ").strip()
-        )
-        for col in df.columns
-    ]
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
+
+    raw_rows = load_raw_rows(
+        file_bytes,
+        os.path.basename(file_path)
+    )
+
+    df, _ = build_dataframe_from_raw_rows(raw_rows)
 
     return map_catalog_columns(df)
 

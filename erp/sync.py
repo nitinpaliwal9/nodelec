@@ -14,12 +14,20 @@ from erp.tally_connector import (
 
 def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
     """
-    Pulls stock items from the connection's Tally instance, matches
-    each one to the shared ComponentMaster catalog by normalized name
-    (the same normalization the matching engine itself uses, so a
-    Tally item named "STM32F103C8T6-TR" and a BOM line for the same
-    part resolve to the same normalized key), and upserts a
-    ComponentPrice row per match scoped to this organization.
+    Pulls stock items from the connection's Tally instance and
+    upserts a ComponentPrice row per item scoped to this organization.
+
+    A Tally stock item that doesn't already match an existing
+    ComponentMaster row (by the same normalization the matching engine
+    itself uses) is NOT discarded -- it's created. A customer's own
+    ERP is the authoritative source for what they actually stock and
+    sell; skipping items just because nobody had imported them into
+    the catalog yet defeats the entire point of syncing real
+    inventory. New rows are tagged source="erp_sync" (see
+    models.ComponentMaster) so their provenance stays visible, and get
+    the same PartAlias seeding a confirmed review or a catalog import
+    gets, so a BOM upload referencing this exact string next time
+    hits the alias cache directly.
 
     Records success/failure on the connection itself either way, then
     re-raises on failure so a caller (CLI, scheduled worker) still
@@ -29,6 +37,7 @@ def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
     stats = {
         "tally_items_seen": 0,
         "matched_to_catalog": 0,
+        "created_from_erp": 0,
         "unmatched": 0
     }
 
@@ -59,13 +68,55 @@ def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
 
     for item in stock_items:
 
-        normalized_name = BOMEngine.normalize_mpn(item["name"])
+        raw_name = (item.get("name") or "").strip()
+
+        if not raw_name:
+            stats["unmatched"] += 1
+            continue
+
+        normalized_name = BOMEngine.normalize_mpn(raw_name)
+
+        if not normalized_name:
+            stats["unmatched"] += 1
+            continue
 
         component = normalized_lookup.get(normalized_name)
 
         if not component:
-            stats["unmatched"] += 1
-            continue
+
+            # Real stock item, not yet in the shared catalog -- create
+            # it rather than silently dropping real inventory data.
+            component = models.ComponentMaster(
+                mpn=raw_name,
+                normalized_mpn=normalized_name,
+                manufacturer="Unknown (from ERP sync)",
+                source="erp_sync"
+            )
+
+            db.add(component)
+            db.flush()
+
+            normalized_lookup[normalized_name] = component
+
+            # dirty_string is unique -- guard against a prior alias
+            # (learned from a confirmed review, say) already claiming
+            # this exact raw string before inserting a second one.
+            existing_alias = (
+                db.query(models.PartAlias)
+                .filter(models.PartAlias.dirty_string == raw_name)
+                .first()
+            )
+
+            if not existing_alias:
+
+                db.add(
+                    models.PartAlias(
+                        dirty_string=raw_name,
+                        resolved_component_id=component.id
+                    )
+                )
+
+            stats["created_from_erp"] += 1
 
         existing = (
             db.query(models.ComponentPrice)

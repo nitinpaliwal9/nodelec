@@ -82,8 +82,9 @@ def sync_connection(erp_connection_id: str):
             stats = sync_organization_erp(db, connection)
 
             print(f"Tally items seen:     {stats['tally_items_seen']}")
-            print(f"Matched to catalog:   {stats['matched_to_catalog']}")
-            print(f"Unmatched:            {stats['unmatched']}")
+            print(f"Priced (total):       {stats['matched_to_catalog']}")
+            print(f"  of which new to catalog: {stats['created_from_erp']}")
+            print(f"Skipped (no name):    {stats['unmatched']}")
             print("Sync succeeded.")
 
         except (TallyConnectionError, TallyResponseError) as exc:
