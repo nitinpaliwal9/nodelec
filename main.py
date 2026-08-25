@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from database import (
     get_db,
@@ -643,6 +644,89 @@ async def list_uploaded_files(
 
         for f in files
     ]
+
+# ==========================================================
+# DASHBOARD SUMMARY
+# ==========================================================
+# Aggregate counts for the dashboard home page. Computed with SQL
+# aggregation (func.count/func.sum + GROUP BY), not by fetching every
+# row and summing in Python -- the same N+1-avoidance principle as
+# catalog_importer.py's bulk import, just applied to a read path that
+# runs on every dashboard visit rather than a one-off script.
+
+@app.get("/api/organization/summary")
+async def get_organization_summary(
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
+):
+
+    status_counts = (
+        db.query(
+            models.BOMFile.status,
+            func.count(models.BOMFile.id)
+        )
+        .filter(models.BOMFile.organization_id == organization.id)
+        .group_by(models.BOMFile.status)
+        .all()
+    )
+
+    files_by_status = {
+        status.value: count
+        for status, count in status_counts
+    }
+
+    review_queue_count = (
+        db.query(func.count(models.BOMRow.id))
+        .join(models.BOMFile, models.BOMRow.file_id == models.BOMFile.id)
+        .filter(
+            models.BOMFile.organization_id == organization.id,
+            models.BOMRow.match_status == models.MatchType.REVIEW,
+            models.BOMRow.review_action.is_(None)
+        )
+        .scalar()
+    ) or 0
+
+    # Same "priced, not rejected" definition as a single file's own
+    # total_quote_value (see /api/bom/status/{file_id}), just summed
+    # across every file this org has rather than one.
+    quote_total, quote_currency = (
+        db.query(
+            func.sum(models.BOMRow.line_total),
+            func.max(models.BOMRow.price_currency)
+        )
+        .join(models.BOMFile, models.BOMRow.file_id == models.BOMFile.id)
+        .filter(
+            models.BOMFile.organization_id == organization.id,
+            models.BOMRow.line_total.isnot(None),
+            models.BOMRow.review_action != "rejected"
+        )
+        .first()
+    )
+
+    recent_files = (
+        db.query(models.BOMFile)
+        .filter(models.BOMFile.organization_id == organization.id)
+        .order_by(models.BOMFile.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    return {
+        "total_files": sum(files_by_status.values()),
+        "files_by_status": files_by_status,
+        "review_queue_count": review_queue_count,
+        "total_quote_value": round(quote_total, 2) if quote_total is not None else None,
+        "currency": quote_currency,
+        "recent_files": [
+            {
+                "file_id": str(f.id),
+                "status": f.status.value,
+                "distributor": f.distributor_id,
+                "created_at": f.created_at
+            }
+            for f in recent_files
+        ]
+    }
 
 # ==========================================================
 # ORGANIZATION RULES
