@@ -1,14 +1,21 @@
 // lib/api.ts
 //
-// Thin client for the Nodelec backend API. Auth is a bearer API key
-// (see backend/auth.py) stored in localStorage -- there's no human
-// login/session system yet, so this is deliberately the simplest
-// thing that works: paste the key issued by
-// `python manage_api_keys.py issue-key`, it's attached to every
-// request from here on.
+// Thin client for the Nodelec backend API. Two separate auth systems
+// live side by side here, deliberately not unified:
+//   - The dashboard's own bearer API key (backend/auth.py), issued
+//     via `manage_api_keys.py issue-key` and pasted in by whoever set
+//     up the organization. Unchanged, still how the dashboard itself
+//     authenticates.
+//   - Website user accounts (backend/user_auth.py) -- real
+//     registration/login for a person, stored under a separate
+//     localStorage key. Registering does NOT grant dashboard access
+//     by itself (see UserProfile.has_dashboard_access) -- connecting
+//     a paid account to an issued API key is a later phase, not
+//     built here yet.
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const STORAGE_KEY = 'nodelec_api_key';
+const SESSION_STORAGE_KEY = 'nodelec_session_token';
 
 export class ApiError extends Error {
   status: number;
@@ -309,4 +316,100 @@ export async function uploadFile(
     method: 'POST',
     body: formData,
   });
+}
+
+// ---------------------------------------------------------------
+// Website user accounts (registration/login) -- separate token from
+// the dashboard API key, see the file header.
+// ---------------------------------------------------------------
+
+export function getStoredSessionToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(SESSION_STORAGE_KEY);
+}
+
+export function setStoredSessionToken(token: string) {
+  window.localStorage.setItem(SESSION_STORAGE_KEY, token);
+}
+
+export function clearStoredSessionToken() {
+  window.localStorage.removeItem(SESSION_STORAGE_KEY);
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  company_name: string;
+  has_dashboard_access: boolean;
+}
+
+interface AuthResponse {
+  session_token: string;
+  user: UserProfile;
+}
+
+async function userRequest<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = getStoredSessionToken();
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      detail = body.detail || detail;
+    } catch {
+      // response wasn't JSON -- keep statusText
+    }
+    throw new ApiError(response.status, detail);
+  }
+
+  return response.json();
+}
+
+export async function registerUser(body: {
+  email: string;
+  password: string;
+  full_name: string;
+  company_name: string;
+}): Promise<UserProfile> {
+  const result = await userRequest<AuthResponse>('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  setStoredSessionToken(result.session_token);
+  return result.user;
+}
+
+export async function loginUser(body: { email: string; password: string }): Promise<UserProfile> {
+  const result = await userRequest<AuthResponse>('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  setStoredSessionToken(result.session_token);
+  return result.user;
+}
+
+export function getMyProfile(): Promise<UserProfile> {
+  return userRequest('/api/auth/me');
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    await userRequest('/api/auth/logout', { method: 'POST' });
+  } finally {
+    clearStoredSessionToken();
+  }
 }

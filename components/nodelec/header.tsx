@@ -111,6 +111,12 @@ export function Header() {
 
             {/* Desktop CTA Button */}
             <div className="hidden md:flex items-center gap-4">
+              <Link
+                href="/login"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Sign In
+              </Link>
               <motion.div
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -195,6 +201,15 @@ export function Header() {
                   </Link>
                 </motion.div>
               ))}
+              <motion.div custom={navLinks.length} variants={menuItemVariants} initial="hidden" animate="visible">
+                <Link
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-4 py-4 text-lg font-medium rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-all"
+                >
+                  Sign In
+                </Link>
+              </motion.div>
             </nav>
 
             <motion.div
@@ -203,12 +218,11 @@ export function Header() {
               transition={{ delay: 0.4 }}
               className="p-6 border-t border-border/30"
             >
-              <Button
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-full bg-primary text-primary-foreground py-6 text-lg font-bold shadow-xl shadow-primary/20"
-              >
-                Start Your Pilot
-              </Button>
+              <Link href="/contact" onClick={() => setMobileMenuOpen(false)}>
+                <Button className="w-full bg-primary text-primary-foreground py-6 text-lg font-bold shadow-xl shadow-primary/20">
+                  Start Your Pilot
+                </Button>
+              </Link>
             </motion.div>
           </motion.div>
         )}
