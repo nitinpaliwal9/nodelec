@@ -25,6 +25,8 @@ from database import (
 
 import models
 
+from auth import get_current_organization
+
 from worker import (
     process_bom_file_async
 )
@@ -141,7 +143,8 @@ async def root():
 async def upload_bom_file(
     distributor_id: str = Form("unknown"),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
 ):
 
     if not file.filename:
@@ -190,6 +193,7 @@ async def upload_bom_file(
         )
 
     db_file = models.BOMFile(
+        organization_id=organization.id,
         distributor_id=distributor_id,
         status=models.FileStatus.PENDING,
         file_path=str(destination)
@@ -251,19 +255,24 @@ async def upload_bom_file(
 @app.get("/api/bom/status/{file_id}")
 async def get_file_processing_status(
     file_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
 ):
 
     bom_file = (
         db.query(models.BOMFile)
         .filter(
-            models.BOMFile.id == file_id
+            models.BOMFile.id == file_id,
+            models.BOMFile.organization_id == organization.id
         )
         .first()
     )
 
     if not bom_file:
 
+        # Deliberately identical to "doesn't exist" -- a file that
+        # belongs to a different organization should be
+        # indistinguishable from one that was never uploaded at all.
         raise HTTPException(
             status_code=404,
             detail="File not found"
@@ -315,6 +324,14 @@ async def get_file_processing_status(
         ]
     )
 
+    review_count = len(
+        [
+            r for r in rows
+            if r.match_status
+            == models.MatchType.REVIEW
+        ]
+    )
+
     unmatched_count = len(
         unmatched
     )
@@ -339,6 +356,9 @@ async def get_file_processing_status(
 
             "fuzzy_matches":
                 fuzzy_count,
+
+            "needs_review":
+                review_count,
 
             "unmatched":
                 unmatched_count,
@@ -408,11 +428,15 @@ async def get_file_processing_status(
 
 @app.get("/api/bom/files")
 async def list_uploaded_files(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
 ):
 
     files = (
         db.query(models.BOMFile)
+        .filter(
+            models.BOMFile.organization_id == organization.id
+        )
         .order_by(
             models.BOMFile.created_at.desc()
         )

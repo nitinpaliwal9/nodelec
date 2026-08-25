@@ -34,6 +34,12 @@ st.divider()
 
 st.sidebar.header("Upload Configuration")
 
+api_key = st.sidebar.text_input(
+    "API Key",
+    type="password",
+    help="Issued via manage_api_keys.py issue-key <organization_id>"
+)
+
 distributor_id = st.sidebar.text_input(
     "Sales Employee ID",
     value="EMP_DELHI_01"
@@ -60,7 +66,17 @@ uploaded_file = st.file_uploader(
     type=["csv", "xlsx", "xls"]
 )
 
+if uploaded_file and not api_key:
+
+    st.error("Enter an API key in the sidebar before uploading.")
+
+    st.stop()
+
 if uploaded_file:
+
+    auth_headers = {
+        "Authorization": f"Bearer {api_key}"
+    }
 
     st.info("Uploading BOM...")
 
@@ -83,7 +99,8 @@ if uploaded_file:
         upload_response = requests.post(
             f"{FASTAPI_URL}/api/bom/upload",
             files=files,
-            data=data
+            data=data,
+            headers=auth_headers
         )
 
         if upload_response.status_code != 200:
@@ -115,7 +132,8 @@ if uploaded_file:
         while True:
 
             status_response = requests.get(
-                f"{FASTAPI_URL}/api/bom/status/{file_id}"
+                f"{FASTAPI_URL}/api/bom/status/{file_id}",
+                headers=auth_headers
             )
 
             if status_response.status_code != 200:

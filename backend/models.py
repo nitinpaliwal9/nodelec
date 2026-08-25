@@ -22,7 +22,52 @@ class FileStatus(PyEnum):
 class MatchType(PyEnum):
     EXACT = "exact"
     FUZZY = "fuzzy"
+    REVIEW = "review"
     UNMATCHED = "unmatched"
+
+# ==========================================
+# TENANCY & AUTH
+# ==========================================
+# The real security boundary between customers. Everything below this
+# point (uploads, results, catalog visibility) is scoped to an
+# Organization -- never to a client-supplied string like the old
+# "distributor_id" field, which was never verified against anything
+# and let any caller read any other tenant's data.
+
+class Organization(Base):
+    """A paying customer account (e.g. one distributor)."""
+    __tablename__ = "organizations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    api_keys = relationship("ApiKey", back_populates="organization", cascade="all, delete-orphan")
+    bom_files = relationship("BOMFile", back_populates="organization")
+
+
+class ApiKey(Base):
+    """
+    A credential issued to an Organization. Only a salted hash of the
+    key is ever stored -- the raw key is shown once at creation time
+    (see manage_api_keys.py) and can never be recovered afterward,
+    the same way a password would be handled.
+    """
+    __tablename__ = "api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    key_hash = Column(String, unique=True, index=True, nullable=False)
+    key_prefix = Column(String, nullable=False)  # e.g. "nk_live_a1b2c3" -- safe to display, not reversible to the full key
+    label = Column(String, nullable=True)        # e.g. "Production", "Zapier integration"
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    organization = relationship("Organization", back_populates="api_keys")
+
 
 # ==========================================
 # SUPPLY CHAIN ENGINE CACHE SCHEMAS
@@ -67,15 +112,24 @@ class PartAlias(Base):
 class BOMFile(Base):
     """Tracks batch processing file tracking context."""
     __tablename__ = "bom_files"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # The actual tenant-isolation boundary -- set from the authenticated
+    # API key, never from anything the client sends directly.
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    # A free-text label for who/which branch submitted this (e.g. an
+    # employee ID). Purely descriptive -- NOT a security boundary.
     distributor_id = Column(String, nullable=False, index=True)
+
     status = Column(Enum(FileStatus), default=FileStatus.PENDING)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     file_path = Column(String, nullable=False) # Local volume route or cloud object URL
-    
+
     # Back-reference relationship for tracking file rows automatically
     rows = relationship("BOMRow", back_populates="file", cascade="all, delete-orphan")
+    organization = relationship("Organization", back_populates="bom_files")
 
 class BOMRow(Base):
     """Individual structural entries within an uploaded Bill of Materials sheet."""

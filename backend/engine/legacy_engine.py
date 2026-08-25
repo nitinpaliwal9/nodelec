@@ -11,6 +11,15 @@ from models import MatchType
 
 class BOMEngine:
 
+    # A letters-only fuzzy difference (digit runs agree) is only
+    # auto-accepted above this WRatio score; anything lower goes to
+    # REVIEW. Every false-positive found in testing (adversarial parts
+    # that are genuinely different components) scored 92-96, so 97
+    # comfortably excludes all of them while still letting through very
+    # high-confidence cosmetic differences (e.g. a trailing distributor
+    # suffix that isn't in the known packaging-suffix list).
+    FUZZY_AUTO_ACCEPT_FLOOR = 97.0
+
     # =====================================================
     # NORMALIZATION
     # =====================================================
@@ -40,9 +49,11 @@ class BOMEngine:
         if text in ("", "NAN", "NONE"):
             return ""
 
-        # remove common packaging suffixes
+        # remove common packaging suffixes (dash/underscore/space-separated --
+        # real customer text uses "STM32F103C8T6 TR" as often as the
+        # dashed form a distributor catalog would use)
         text = re.sub(
-            r'[-_](TR|TAPE|REEL|CUTTAPE|CT|DKR|TB)$',
+            r'[-_\s](TR|TAPE|REEL|CUTTAPE|CT|DKR|TB)$',
             '',
             text,
             flags=re.IGNORECASE
@@ -53,6 +64,24 @@ class BOMEngine:
             '',
             text
         )
+
+    # =====================================================
+    # VALUE SIGNATURE (for the fuzzy-match gate below)
+    # =====================================================
+
+    @staticmethod
+    def extract_digit_runs(normalized_text: str) -> list:
+        """
+        Every run of consecutive digits in an already-normalized MPN,
+        in order. In virtually every MPN scheme (resistor/capacitor
+        EIA codes, flash-size digits, revision numbers, ...) the digits
+        are what actually encode the part's *value* -- letters are
+        mostly package/grade/vendor codes. Two MPNs that are textually
+        very similar but disagree on any digit run are, in practice,
+        two different components, not a typo of each other.
+        """
+
+        return re.findall(r'\d+', normalized_text)
 
     # =====================================================
     # DATAFRAME PREPROCESSOR
@@ -264,6 +293,37 @@ class BOMEngine:
                 2
             )
 
+            # =============================================
+            # VALUE-AWARE REVIEW GATE
+            # =============================================
+            # A high WRatio score only means "textually similar" --
+            # it has no idea that "104" and "105" are a 10x
+            # capacitance difference, or that "0710K" and "071K" are
+            # different resistor values. If any digit run disagrees
+            # between input and candidate, treat it as a probable
+            # value/variant change and route it to REVIEW instead of
+            # auto-accepting, no matter how high the text-similarity
+            # score is. A letters-only difference (e.g. a distributor
+            # suffix) is lower-risk, but still needs a very high score
+            # before it's trusted automatically.
+
+            input_digits = cls.extract_digit_runs(
+                normalized_input
+            )
+
+            matched_digits = cls.extract_digit_runs(
+                matched_normalized
+            )
+
+            digits_disagree = (
+                input_digits != matched_digits
+            )
+
+            needs_review = (
+                digits_disagree
+                or score < cls.FUZZY_AUTO_ACCEPT_FLOOR
+            )
+
             return {
                 "matched_id":
                     matched_component.id,
@@ -275,7 +335,9 @@ class BOMEngine:
                     confidence,
 
                 "status":
-                    MatchType.FUZZY,
+                    MatchType.REVIEW
+                    if needs_review
+                    else MatchType.FUZZY,
 
                 "metadata":
                     {
@@ -283,7 +345,18 @@ class BOMEngine:
                         "match_strategy":
                             "normalized_fuzzy",
                         "fuzzy_score":
-                            score
+                            score,
+                        "input_digit_signature":
+                            input_digits,
+                        "matched_digit_signature":
+                            matched_digits,
+                        "review_reason": (
+                            "digit_value_mismatch"
+                            if digits_disagree
+                            else "below_auto_accept_confidence"
+                            if needs_review
+                            else None
+                        )
                     }
             }
 
