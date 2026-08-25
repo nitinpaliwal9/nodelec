@@ -336,6 +336,33 @@ async def get_file_processing_status(
         unmatched
     )
 
+    priced_rows = [
+        r for r in rows
+        if r.line_total is not None
+    ]
+
+    matched_rows = [
+        r for r in rows
+        if r.matched_component_id is not None
+    ]
+
+    total_quote_value = round(
+        sum(r.line_total for r in priced_rows),
+        2
+    ) if priced_rows else None
+
+    quote_currency = (
+        priced_rows[0].price_currency
+        if priced_rows else None
+    )
+
+    # total_quote_value only sums rows that actually have a synced
+    # price -- a matched-but-unpriced row (no ERP sync yet, or genuinely
+    # new part) is silently excluded from the sum, not counted as free.
+    # Surface that gap explicitly so the total is never mistaken for
+    # "the complete quote" when it isn't.
+    rows_missing_price = len(matched_rows) - len(priced_rows)
+
     return {
         "file_id":
             str(bom_file.id),
@@ -364,7 +391,16 @@ async def get_file_processing_status(
                 unmatched_count,
 
             "errors":
-                len(errors)
+                len(errors),
+
+            "total_quote_value":
+                total_quote_value,
+
+            "currency":
+                quote_currency,
+
+            "rows_missing_price":
+                rows_missing_price
         },
 
         "matches": [
@@ -386,7 +422,19 @@ async def get_file_processing_status(
                     ),
 
                 "match_type":
-                    r.match_status.value
+                    r.match_status.value,
+
+                "quantity":
+                    r.requested_quantity,
+
+                "unit_price":
+                    r.unit_price,
+
+                "line_total":
+                    r.line_total,
+
+                "currency":
+                    r.price_currency
             }
 
             for r in rows

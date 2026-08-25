@@ -3,7 +3,7 @@
 import uuid
 import datetime
 from enum import Enum as PyEnum
-from sqlalchemy import Column, String, Integer, ForeignKey, JSON, Enum, Float, DateTime, Boolean
+from sqlalchemy import Column, String, Integer, ForeignKey, JSON, Enum, Float, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -103,6 +103,34 @@ class MailboxConnection(Base):
     organization = relationship("Organization")
 
 
+class ErpConnection(Base):
+    """
+    An organization's own ERP instance (currently: Tally, reached over
+    its local XML HTTP gateway -- no cloud account or third-party
+    credential involved, since Tally runs on the distributor's own
+    machine/network). One org can have one connection per erp_type.
+    """
+    __tablename__ = "erp_connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    erp_type = Column(String, nullable=False, default="tally")  # extensible: sap/oracle/netsuite/odoo later
+    label = Column(String, nullable=True)
+
+    host = Column(String, nullable=False)  # e.g. "localhost" or the distributor's LAN IP running Tally
+    port = Column(Integer, nullable=False, default=9000)
+    company_name = Column(String, nullable=False)  # Tally requires specifying which company to query
+
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_sync_status = Column(String, nullable=True)  # "success" or "failed: <reason>"
+
+    organization = relationship("Organization")
+
+
 # ==========================================
 # SUPPLY CHAIN ENGINE CACHE SCHEMAS
 # ==========================================
@@ -137,6 +165,35 @@ class PartAlias(Base):
     resolved_component_id = Column(UUID(as_uuid=True), ForeignKey("components_master.id", ondelete="CASCADE"), nullable=False)
     
     # Relationship linkage mapping
+    component = relationship("ComponentMaster")
+
+
+class ComponentPrice(Base):
+    """
+    A price is NOT global the way a component's identity is -- two
+    distributors selling the same STM32F103C8T6 charge different
+    prices, so this is a per-organization overlay on top of the
+    shared ComponentMaster catalog, kept current by ERP sync
+    (erp/sync.py). One row per (organization, component); a sync
+    updates it in place rather than appending history.
+    """
+    __tablename__ = "component_prices"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "component_id", name="uq_component_price_org_component"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    component_id = Column(UUID(as_uuid=True), ForeignKey("components_master.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    unit_price = Column(Float, nullable=False)
+    currency = Column(String, nullable=False, default="INR")
+    stock_quantity = Column(Integer, nullable=True)
+
+    source = Column(String, nullable=False, default="tally")
+    synced_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    organization = relationship("Organization")
     component = relationship("ComponentMaster")
 
 # ==========================================
@@ -182,7 +239,15 @@ class BOMRow(Base):
     matched_mpn = Column(String, nullable=True, index=True)
     match_confidence = Column(Float, default=0.0)  # Scoring metric: 0.0 to 1.0
     match_status = Column(Enum(MatchType), default=MatchType.UNMATCHED)
-    
+
+    # Pricing, looked up from ComponentPrice (the file's own organization's
+    # ERP-synced price) at the moment this row was matched -- deliberately
+    # NOT a live join, so an already-issued quote doesn't silently reprice
+    # itself if the ERP's price changes later.
+    unit_price = Column(Float, nullable=True)
+    line_total = Column(Float, nullable=True)
+    price_currency = Column(String, nullable=True)
+
     # Extracted metadata structure token storage for deep debugging
     extracted_metadata = Column(JSON, nullable=True)
 
