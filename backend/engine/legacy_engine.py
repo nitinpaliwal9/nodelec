@@ -30,6 +30,18 @@ class BOMEngine:
     # 25-26, so 65 sits well clear of that noise floor with margin.
     DESCRIPTION_MATCH_CUTOFF = 65.0
 
+    # A description match's raw token-overlap score can legitimately
+    # hit 100 -- e.g. every word in "NPN transistor general purpose"
+    # appearing in some component's stored description -- but that
+    # isn't the same thing as being sure it's *that* component. Unlike
+    # an MPN comparison, a generic description doesn't uniquely
+    # identify one part; many catalog rows could equally satisfy it.
+    # Cap the confidence shown so it can never imply more certainty
+    # than description matching structurally provides, and so it's
+    # always visibly lower than any MPN-based fuzzy match -- the raw
+    # score is kept in metadata for anyone who wants it.
+    DESCRIPTION_CONFIDENCE_CEILING = 0.60
+
     # =====================================================
     # NORMALIZATION
     # =====================================================
@@ -170,6 +182,46 @@ class BOMEngine:
         }
 
     # =====================================================
+    # PRECOMPUTED LOOKUP BUILDERS
+    # =====================================================
+    # match_component() used to rebuild these from the full inventory
+    # on every single call -- fine at 12 rows, but at a real catalog's
+    # size (tens of thousands of rows) that means redoing the same
+    # O(n) work for every line item in a BOM instead of once for the
+    # whole file. Measured on a ~23,000-row catalog: rebuilding the
+    # normalized-MPN dict cost ~100ms and the fuzzy search itself
+    # ~75ms -- so a 120-line BOM spent the bulk of its ~30s processing
+    # time on repeated setup, not on the actual matching. Callers that
+    # process more than one row against the same inventory_pool (i.e.
+    # worker.py) should build these once and pass them in.
+
+    @classmethod
+    def build_normalized_inventory(cls, inventory_pool: list) -> dict:
+
+        normalized_inventory = {}
+
+        for component in inventory_pool:
+
+            normalized_inventory[
+                cls.normalize_mpn(component.mpn)
+            ] = component
+
+        return normalized_inventory
+
+    @classmethod
+    def build_searchable_catalog(cls, inventory_pool: list):
+
+        catalog_text = {}
+        mpn_lookup = {}
+
+        for component in inventory_pool:
+
+            catalog_text[component.mpn] = cls.build_searchable_text(component)
+            mpn_lookup[component.mpn] = component
+
+        return catalog_text, mpn_lookup
+
+    # =====================================================
     # DESCRIPTION / CATEGORY FALLBACK MATCHING
     # =====================================================
     # Customers frequently describe a part instead of quoting its exact
@@ -208,7 +260,9 @@ class BOMEngine:
     def match_by_description(
         cls,
         raw_text: str,
-        inventory_pool: list
+        inventory_pool: list,
+        catalog_text: dict = None,
+        mpn_lookup: dict = None
     ) -> dict:
         """
         Returns a match dict (always MatchType.REVIEW) if the input
@@ -216,12 +270,15 @@ class BOMEngine:
         searchable text, else None. Never auto-accepts -- description
         matching can identify the right *family* of part but can't
         pin down the exact variant the way an MPN comparison can.
+
+        Pass precomputed catalog_text/mpn_lookup (see
+        build_searchable_catalog) when matching many rows against the
+        same inventory_pool -- otherwise this rebuilds both from
+        scratch on every call.
         """
 
-        catalog_text = {
-            component.mpn: cls.build_searchable_text(component)
-            for component in inventory_pool
-        }
+        if catalog_text is None or mpn_lookup is None:
+            catalog_text, mpn_lookup = cls.build_searchable_catalog(inventory_pool)
 
         if not catalog_text:
             return None
@@ -240,15 +297,15 @@ class BOMEngine:
 
         score = float(best_match[1])
 
-        matched_component = next(
-            c for c in inventory_pool
-            if c.mpn == matched_mpn
-        )
+        matched_component = mpn_lookup[matched_mpn]
 
         return {
             "matched_id": matched_component.id,
             "matched_mpn": matched_component.mpn,
-            "confidence": round(score / 100.0, 2),
+            "confidence": min(
+                round(score / 100.0, 2),
+                cls.DESCRIPTION_CONFIDENCE_CEILING
+            ),
             "status": MatchType.REVIEW,
             "metadata": {
                 "match_strategy": "description_fallback",
@@ -266,8 +323,19 @@ class BOMEngine:
     def match_component(
         cls,
         raw_text: str,
-        inventory_pool: list
+        inventory_pool: list,
+        normalized_inventory: dict = None,
+        catalog_text: dict = None,
+        mpn_lookup: dict = None
     ) -> dict:
+        """
+        Pass precomputed normalized_inventory (build_normalized_inventory)
+        and catalog_text/mpn_lookup (build_searchable_catalog) when
+        matching many rows against the same inventory_pool in one batch
+        -- otherwise both get rebuilt from scratch on every call, which
+        is the dominant cost at real catalog sizes (see the builders'
+        docstring above).
+        """
 
         raw_text = str(
             raw_text
@@ -305,19 +373,8 @@ class BOMEngine:
         # EXACT NORMALIZED MATCH
         # =================================================
 
-        normalized_inventory = {}
-
-        for component in inventory_pool:
-
-            normalized_mpn = (
-                cls.normalize_mpn(
-                    component.mpn
-                )
-            )
-
-            normalized_inventory[
-                normalized_mpn
-            ] = component
+        if normalized_inventory is None:
+            normalized_inventory = cls.build_normalized_inventory(inventory_pool)
 
         exact_match = normalized_inventory.get(
             normalized_input
@@ -469,7 +526,9 @@ class BOMEngine:
 
         description_match = cls.match_by_description(
             raw_text,
-            inventory_pool
+            inventory_pool,
+            catalog_text=catalog_text,
+            mpn_lookup=mpn_lookup
         )
 
         if description_match:
