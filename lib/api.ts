@@ -176,6 +176,110 @@ export function updateOrganizationRules(
   });
 }
 
+// ---------------------------------------------------------------
+// Integrations
+// ---------------------------------------------------------------
+
+export interface WhatsAppIntegration {
+  connected: boolean;
+  phone_number_id: string | null;
+  business_account_id: string | null;
+  webhook_url: string;
+}
+
+export function getWhatsAppIntegration(): Promise<WhatsAppIntegration> {
+  return request('/api/integrations/whatsapp');
+}
+
+export function saveWhatsAppIntegration(body: {
+  phone_number_id: string;
+  business_account_id: string;
+  system_token: string;
+}): Promise<WhatsAppIntegration> {
+  return request('/api/integrations/whatsapp', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export interface EmailIntegration {
+  oauth: {
+    connected: boolean;
+    provider: string | null;
+    mock: boolean;
+  };
+  imap: {
+    connected: boolean;
+    imap_host: string | null;
+    imap_port: number | null;
+    username: string | null;
+    folder: string | null;
+    last_polled_at: string | null;
+  };
+}
+
+export function getEmailIntegration(): Promise<EmailIntegration> {
+  return request('/api/integrations/email');
+}
+
+export function mockConnectEmailOAuth(provider: 'google' | 'outlook'): Promise<EmailIntegration> {
+  return request('/api/integrations/email/oauth/mock-connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export function saveEmailImap(body: {
+  imap_host: string;
+  imap_port: number;
+  username: string;
+  password: string;
+  folder: string;
+}): Promise<EmailIntegration> {
+  return request('/api/integrations/email/imap', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export type ErpPlatform = 'tally' | 'sap_b1' | 'custom_cloud_api';
+
+export interface ErpIntegration {
+  configured: boolean;
+  platform: ErpPlatform | null;
+  host: string | null;
+  port: number | null;
+  company_name: string | null;
+  has_agent_key: boolean;
+  last_synced_at: string | null;
+  last_sync_status: string | null;
+}
+
+export function getErpIntegration(): Promise<ErpIntegration> {
+  return request('/api/integrations/erp');
+}
+
+export function saveErpIntegration(body: {
+  platform: ErpPlatform;
+  host?: string;
+  port?: number;
+  company_name?: string;
+  label?: string;
+}): Promise<ErpIntegration> {
+  return request('/api/integrations/erp', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export function generateTallyAgentKey(): Promise<{ agent_key: string; warning: string }> {
+  return request('/api/integrations/erp/tally-agent-key', { method: 'POST' });
+}
+
 export function getFileStatus(fileId: string): Promise<FileStatus> {
   return request(`/api/bom/status/${fileId}`);
 }
