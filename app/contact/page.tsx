@@ -4,12 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Mail, MapPin, Phone, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { createClient } from '@supabase/supabase-js';
-
-// Supabase configuration
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { getSupabaseClient } from '@/lib/supabase';
 
 export default function ContactPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -18,6 +13,14 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    const supabase = getSupabaseClient();
+
+    if (!supabase) {
+      alert("This form isn't configured yet -- please email hello@nodelec.in directly.");
+      setIsSubmitting(false);
+      return;
+    }
 
     const formData = new FormData(e.currentTarget);
     const payload = {

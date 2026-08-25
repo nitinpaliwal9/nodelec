@@ -5,12 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import { Mail, Phone, MapPin, Github, Linkedin, Twitter, Loader2, CheckCircle2 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-
-// Supabase init
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { getSupabaseClient } from '@/lib/supabase';
 
 export function ContactFooter() {
   const [formData, setFormData] = useState({
@@ -29,11 +24,18 @@ export function ContactFooter() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Supabase m data insert kr rhe hain
+    const supabase = getSupabaseClient();
+
+    if (!supabase) {
+      alert("Pilot requests aren't configured yet -- please email hello@nodelec.in directly.");
+      setIsSubmitting(false);
+      return;
+    }
+
     const { error } = await supabase.from('pilots').insert([
-      { 
-        company_name: formData.company, 
-        monthly_volume: formData.volume 
+      {
+        company_name: formData.company,
+        monthly_volume: formData.volume
       }
     ]);
 
