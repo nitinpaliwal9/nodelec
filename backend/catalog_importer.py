@@ -34,7 +34,15 @@ COLUMN_ALIASES = {
         "mfr part number",
         "full part number",
         "component part number",
-        "sku"
+        "sku",
+        # Tally-style stock exports identify a line item by its own
+        # "Item Name" (often a real-ish part string, sometimes a
+        # plain description) rather than a dedicated MPN column --
+        # same tradeoff erp/sync.py already makes for live Tally
+        # sync: whatever string the customer's own system uses to
+        # identify the part is what a BOM upload will be matched
+        # against, messy or not.
+        "item name"
     ],
 
     "manufacturer": [
@@ -55,7 +63,8 @@ COLUMN_ALIASES = {
     "category": [
         "category",
         "product category",
-        "family"
+        "family",
+        "item group"
     ],
 
     "lifecycle_status": [
@@ -68,8 +77,44 @@ COLUMN_ALIASES = {
         "rohs status",
         "rohs",
         "rohs compliance"
+    ],
+
+    # Standard Pack Quantity -- the same real-world concept as
+    # ComponentMaster.moq (MOQ enforcement rounds a quoted quantity
+    # up to this). Not every distributor sheet has it, hence a
+    # separate optional field rather than folding it into "mpn"-style
+    # required handling.
+    "moq": [
+        "moq",
+        "spq",
+        "minimum order quantity",
+        "standard pack quantity"
     ]
 }
+
+
+def _parse_moq(raw_value) -> int | None:
+    """
+    None means "unknown" (MOQ enforcement already no-ops on that --
+    see models.ComponentMaster.moq), not zero. Real sheets mostly
+    have this as a clean integer, but strip commas/whitespace
+    defensively rather than assume.
+    """
+
+    if raw_value is None or (isinstance(raw_value, float) and pd.isna(raw_value)):
+        return None
+
+    text = str(raw_value).strip().replace(",", "")
+
+    if not text:
+        return None
+
+    try:
+        value = int(float(text))
+    except ValueError:
+        return None
+
+    return value if value > 0 else None
 
 
 def normalize_header(text: str) -> str:
@@ -198,10 +243,23 @@ def import_catalog_file(file_path: str) -> dict:
 
     try:
 
+        # Both pre-fetched once, up front -- the previous version
+        # queried PartAlias once PER ROW (11,000+ individual
+        # round-trips to the database for a real-size catalog file),
+        # which is fine against a local DB but takes the better part
+        # of an hour against a remote one. Everything below runs
+        # in-memory against these two dicts/sets instead.
         existing_by_mpn = {
             component.mpn: component
             for component in db.query(models.ComponentMaster).all()
         }
+
+        existing_aliases = {
+            dirty_string
+            for (dirty_string,) in db.query(models.PartAlias.dirty_string).all()
+        }
+
+        aliases_added_this_run = set()
 
         for _, row in df.iterrows():
 
@@ -243,7 +301,9 @@ def import_catalog_file(file_path: str) -> dict:
                     str(row["rohs_status"]).strip().upper()
                     if pd.notna(row.get("rohs_status"))
                     else None
-                )
+                ),
+
+                "moq": _parse_moq(row.get("moq"))
             }
 
             normalized_mpn = BOMEngine.normalize_mpn(mpn)
@@ -261,15 +321,20 @@ def import_catalog_file(file_path: str) -> dict:
 
             else:
 
+                # id set explicitly (client-side, via the same
+                # uuid.uuid4() the column's own default would call)
+                # rather than left to the DB default + db.flush() --
+                # flush() sends a real round-trip per new row, which
+                # was the other half of what made this slow at real
+                # catalog size.
                 component = models.ComponentMaster(
+                    id=models.uuid.uuid4(),
                     mpn=mpn,
                     normalized_mpn=normalized_mpn,
                     **fields
                 )
 
                 db.add(component)
-
-                db.flush()
 
                 existing_by_mpn[mpn] = component
 
@@ -279,13 +344,7 @@ def import_catalog_file(file_path: str) -> dict:
             # SEED A DIRECT ALIAS FOR THIS MPN
             # -------------------------------------------------
 
-            alias_exists = (
-                db.query(models.PartAlias)
-                .filter(models.PartAlias.dirty_string == mpn)
-                .first()
-            )
-
-            if not alias_exists:
+            if mpn not in existing_aliases and mpn not in aliases_added_this_run:
 
                 db.add(
                     models.PartAlias(
@@ -293,6 +352,8 @@ def import_catalog_file(file_path: str) -> dict:
                         resolved_component_id=component.id
                     )
                 )
+
+                aliases_added_this_run.add(mpn)
 
         db.commit()
 
