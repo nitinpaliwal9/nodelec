@@ -10,3 +10,4 @@ rapidfuzz==3.9.3
 pydantic==2.7.2
 python-multipart==0.0.9
 alembic==1.19.1
+cryptography==46.0.1

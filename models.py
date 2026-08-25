@@ -3,7 +3,7 @@
 import uuid
 import datetime
 from enum import Enum as PyEnum
-from sqlalchemy import Column, String, Integer, ForeignKey, JSON, Enum, Float, DateTime
+from sqlalchemy import Column, String, Integer, ForeignKey, JSON, Enum, Float, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -67,6 +67,40 @@ class ApiKey(Base):
     revoked_at = Column(DateTime(timezone=True), nullable=True)
 
     organization = relationship("Organization", back_populates="api_keys")
+
+
+class MailboxConnection(Base):
+    """
+    A dedicated inbox an Organization has given out to its customers
+    for RFQs (e.g. "rfq@formax-intake.nodelec.ai" or a mailbox they
+    already own). One mailbox belongs to exactly one organization --
+    that's what makes an incoming email's tenant unambiguous without
+    needing an API key on the email itself.
+    """
+    __tablename__ = "mailbox_connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    label = Column(String, nullable=True)  # e.g. "Formax RFQ intake"
+
+    imap_host = Column(String, nullable=False)
+    imap_port = Column(Integer, nullable=False, default=993)
+    username = Column(String, nullable=False)
+
+    # Fernet-encrypted, not plaintext -- see email_intake/crypto.py.
+    # This is a meaningful step up from storing the password as-is, but
+    # it is not a substitute for a real secrets manager/KMS long-term;
+    # anyone with both this DB and MAILBOX_CREDENTIAL_KEY can decrypt it.
+    encrypted_password = Column(String, nullable=False)
+
+    folder = Column(String, nullable=False, default="INBOX")
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_polled_at = Column(DateTime(timezone=True), nullable=True)
+
+    organization = relationship("Organization")
 
 
 # ==========================================
