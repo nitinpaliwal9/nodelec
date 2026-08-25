@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import datetime
 import threading
 import queue as queue_module
 from pathlib import Path
@@ -14,6 +15,9 @@ from fastapi import (
     HTTPException,
     Form
 )
+from fastapi.middleware.cors import CORSMiddleware
+
+from pydantic import BaseModel
 
 from sqlalchemy.orm import Session
 
@@ -44,6 +48,28 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Nodelec B2B BOM Matcher Engine",
     version="2.0.0"
+)
+
+# The dashboard (a separate Next.js origin) calls this API directly
+# from the browser, so it needs real CORS -- not needed while every
+# caller was server-to-server (TestClient, curl, Streamlit's backend
+# request). Configurable since the dashboard's deployed origin won't
+# be localhost in production.
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000"
+    ).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
 
 UPLOAD_DIR = Path("./storage/uploads")
@@ -339,11 +365,13 @@ async def get_file_processing_status(
     priced_rows = [
         r for r in rows
         if r.line_total is not None
+        and r.review_action != "rejected"
     ]
 
     matched_rows = [
         r for r in rows
         if r.matched_component_id is not None
+        and r.review_action != "rejected"
     ]
 
     total_quote_value = round(
@@ -434,7 +462,13 @@ async def get_file_processing_status(
                     r.line_total,
 
                 "currency":
-                    r.price_currency
+                    r.price_currency,
+
+                "review_action":
+                    r.review_action,
+
+                "row_id":
+                    str(r.id)
             }
 
             for r in rows
@@ -469,6 +503,174 @@ async def get_file_processing_status(
             for e in errors
         ]
     }
+
+# ==========================================================
+# REVIEW QUEUE
+# ==========================================================
+
+class ReviewActionRequest(BaseModel):
+    action: str  # "confirm" or "reject"
+
+
+@app.get("/api/bom/review-queue")
+async def get_review_queue(
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
+):
+
+    rows = (
+        db.query(models.BOMRow)
+        .join(
+            models.BOMFile,
+            models.BOMRow.file_id == models.BOMFile.id
+        )
+        .filter(
+            models.BOMFile.organization_id == organization.id,
+            models.BOMRow.match_status == models.MatchType.REVIEW,
+            models.BOMRow.review_action.is_(None)
+        )
+        .order_by(
+            models.BOMFile.created_at.desc()
+        )
+        .all()
+    )
+
+    return [
+
+        {
+            "row_id":
+                str(r.id),
+
+            "file_id":
+                str(r.file_id),
+
+            "submitted_by":
+                r.file.distributor_id,
+
+            "uploaded_at":
+                r.file.created_at,
+
+            "input":
+                r.raw_component_text,
+
+            "quantity":
+                r.requested_quantity,
+
+            "suggested_mpn":
+                r.matched_mpn,
+
+            "confidence":
+                round(r.match_confidence * 100, 2),
+
+            "review_reason":
+                (r.extracted_metadata or {}).get("review_reason"),
+
+            "unit_price":
+                r.unit_price,
+
+            "line_total":
+                r.line_total,
+
+            "currency":
+                r.price_currency
+        }
+
+        for r in rows
+    ]
+
+
+@app.patch("/api/bom/rows/{row_id}/review")
+async def review_bom_row(
+    row_id: str,
+    body: ReviewActionRequest,
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
+):
+
+    if body.action not in ("confirm", "reject"):
+
+        raise HTTPException(
+            status_code=400,
+            detail="action must be 'confirm' or 'reject'"
+        )
+
+    row = (
+        db.query(models.BOMRow)
+        .join(
+            models.BOMFile,
+            models.BOMRow.file_id == models.BOMFile.id
+        )
+        .filter(
+            models.BOMRow.id == row_id,
+            models.BOMFile.organization_id == organization.id
+        )
+        .first()
+    )
+
+    if not row:
+
+        # Same principle as file lookups: a row belonging to another
+        # organization looks identical to one that doesn't exist.
+        raise HTTPException(
+            status_code=404,
+            detail="Row not found"
+        )
+
+    if row.match_status != models.MatchType.REVIEW:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Row is not pending review "
+                f"(status: {row.match_status.value})"
+            )
+        )
+
+    if row.review_action is not None:
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Row was already {row.review_action}"
+        )
+
+    row.review_action = (
+        "confirmed" if body.action == "confirm" else "rejected"
+    )
+
+    row.reviewed_at = datetime.datetime.now(datetime.timezone.utc)
+
+    # A confirmed match is exactly the human-in-the-loop signal the
+    # alias cache is for -- learn it now so the next time this same
+    # messy string comes in, it resolves instantly instead of needing
+    # review again.
+    if body.action == "confirm" and row.matched_component_id:
+
+        existing_alias = (
+            db.query(models.PartAlias)
+            .filter(
+                models.PartAlias.dirty_string == row.raw_component_text
+            )
+            .first()
+        )
+
+        if not existing_alias:
+
+            db.add(
+                models.PartAlias(
+                    dirty_string=row.raw_component_text,
+                    resolved_component_id=row.matched_component_id
+                )
+            )
+
+    db.commit()
+    db.refresh(row)
+
+    return {
+        "row_id": str(row.id),
+        "review_action": row.review_action,
+        "reviewed_at": row.reviewed_at
+    }
+
 
 # ==========================================================
 # FILE LISTING

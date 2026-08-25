@@ -248,6 +248,14 @@ class BOMRow(Base):
     line_total = Column(Float, nullable=True)
     price_currency = Column(String, nullable=True)
 
+    # A REVIEW-status row's match_status never changes once written --
+    # that's the honest record of "this wasn't auto-matched with full
+    # confidence". A human's decision is tracked separately here so the
+    # audit trail (and any future "review-tier accuracy" reporting)
+    # stays intact regardless of what a reviewer decided.
+    review_action = Column(String, nullable=True)  # "confirmed" | "rejected" | null = pending
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
     # Extracted metadata structure token storage for deep debugging
     extracted_metadata = Column(JSON, nullable=True)
 
