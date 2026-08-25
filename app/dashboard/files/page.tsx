@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
-import { Upload, Loader2, AlertTriangle, FileSpreadsheet, ChevronRight } from 'lucide-react';
+import { Upload, Loader2, AlertTriangle, FileSpreadsheet, ChevronRight, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { FilterChip } from '@/components/nodelec/filter-chip';
 import { listFiles, uploadFile, ApiError, type FileSummary } from '@/lib/api';
 
 const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -17,11 +18,15 @@ const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | '
   failed: 'destructive',
 };
 
+const STATUS_ORDER = ['completed', 'processing', 'pending', 'failed'];
+
 export default function FilesPage() {
   const [files, setFiles] = useState<FileSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [distributorId, setDistributorId] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | 'all'>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -55,6 +60,29 @@ export default function FilesPage() {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const f of files ?? []) {
+      counts[f.status] = (counts[f.status] ?? 0) + 1;
+    }
+    return counts;
+  }, [files]);
+
+  const visibleFiles = useMemo(() => {
+    let list = files ?? [];
+
+    if (statusFilter !== 'all') {
+      list = list.filter((f) => f.status === statusFilter);
+    }
+
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((f) => f.distributor.toLowerCase().includes(q));
+    }
+
+    return list;
+  }, [files, statusFilter, search]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -116,46 +144,79 @@ export default function FilesPage() {
       )}
 
       {files !== null && files.length > 0 && (
-        <Card className="border-border/50">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Submitted by</TableHead>
-                <TableHead>Uploaded</TableHead>
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {files.map((f) => (
-                <TableRow key={f.file_id} className="cursor-pointer">
-                  <TableCell>
-                    <Link href={`/dashboard/files/${f.file_id}`} className="contents">
-                      <Badge variant={STATUS_VARIANT[f.status] ?? 'outline'} className="capitalize">
-                        {f.status}
-                      </Badge>
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/dashboard/files/${f.file_id}`} className="contents">
-                      {f.distributor}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/dashboard/files/${f.file_id}`} className="contents text-muted-foreground">
-                      {new Date(f.created_at).toLocaleString()}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/dashboard/files/${f.file_id}`}>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                    </Link>
-                  </TableCell>
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterChip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} label="All" count={files.length} />
+            {STATUS_ORDER.filter((s) => statusCounts[s] > 0).map((status) => (
+              <FilterChip
+                key={status}
+                active={statusFilter === status}
+                onClick={() => setStatusFilter(status)}
+                label={status.charAt(0).toUpperCase() + status.slice(1)}
+                count={statusCounts[status]}
+              />
+            ))}
+
+            <div className="relative ml-auto w-full sm:w-64">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search by submitter..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-8 text-sm"
+              />
+            </div>
+          </div>
+
+          <Card className="border-border/50">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Submitted by</TableHead>
+                  <TableHead>Uploaded</TableHead>
+                  <TableHead className="w-8" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+              </TableHeader>
+              <TableBody>
+                {visibleFiles.map((f) => (
+                  <TableRow key={f.file_id} className="cursor-pointer">
+                    <TableCell>
+                      <Link href={`/dashboard/files/${f.file_id}`} className="contents">
+                        <Badge variant={STATUS_VARIANT[f.status] ?? 'outline'} className="capitalize">
+                          {f.status}
+                        </Badge>
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/dashboard/files/${f.file_id}`} className="contents">
+                        {f.distributor}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/dashboard/files/${f.file_id}`} className="contents text-muted-foreground">
+                        {new Date(f.created_at).toLocaleString()}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/dashboard/files/${f.file_id}`}>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {visibleFiles.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">
+                      No files match this filter.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </>
       )}
     </div>
   );

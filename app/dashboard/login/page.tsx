@@ -32,7 +32,7 @@ export default function DashboardLoginPage() {
       return;
     }
 
-    router.replace('/dashboard/review');
+    router.replace('/dashboard');
   }
 
   return (

@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, FileStack, Settings2, Plug, LogOut, Zap } from 'lucide-react';
+import { LayoutDashboard, ListChecks, FileStack, Settings2, Plug, LogOut, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getStoredApiKey, clearStoredApiKey } from '@/lib/api';
 
 const NAV_LINKS = [
-  { name: 'Review Queue', href: '/dashboard/review', icon: LayoutDashboard },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, exact: true },
+  { name: 'Review Queue', href: '/dashboard/review', icon: ListChecks },
   { name: 'Files', href: '/dashboard/files', icon: FileStack },
   { name: 'Integrations', href: '/dashboard/integrations', icon: Plug },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings2 },
@@ -44,14 +45,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <header className="border-b border-border/50 bg-card/40 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
-            <Link href="/dashboard/review" className="flex items-center gap-2 font-bold text-lg">
+            <Link href="/dashboard" className="flex items-center gap-2 font-bold text-lg">
               <Zap className="w-5 h-5 text-primary" />
               Nodelec
             </Link>
             <nav className="hidden sm:flex items-center gap-1">
               {NAV_LINKS.map((link) => {
                 const Icon = link.icon;
-                const active = pathname?.startsWith(link.href);
+                const active = link.exact ? pathname === link.href : pathname?.startsWith(link.href);
                 return (
                   <Link
                     key={link.href}

@@ -155,6 +155,19 @@ export function listFiles(): Promise<FileSummary[]> {
   return request('/api/bom/files');
 }
 
+export interface OrganizationSummary {
+  total_files: number;
+  files_by_status: Record<string, number>;
+  review_queue_count: number;
+  total_quote_value: number | null;
+  currency: string | null;
+  recent_files: FileSummary[];
+}
+
+export function getOrganizationSummary(): Promise<OrganizationSummary> {
+  return request('/api/organization/summary');
+}
+
 export interface OrganizationRules {
   quote_validity_hours: number;
   default_margin_percent: number;
