@@ -12,7 +12,8 @@ from fastapi import (
     File,
     Depends,
     HTTPException,
-    Form
+    Form,
+    Header
 )
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -39,6 +40,13 @@ from crypto_utils import encrypt_secret
 from email_intake.crypto import encrypt_password
 from erp.sync import upsert_components_from_stock_items
 from background_worker import start_background_workers
+
+from user_auth import (
+    hash_password,
+    verify_password,
+    create_session,
+    get_current_user
+)
 
 # ==========================================================
 # DATABASE INIT
@@ -111,6 +119,161 @@ async def root():
         "service": "Nodelec BOM Matcher",
         "status": "online"
     }
+
+# ==========================================================
+# USER AUTH (marketing-site registration/login)
+# ==========================================================
+# Separate from ApiKey/get_current_organization above -- a registered
+# User has no dashboard access on their own (see models.User). This
+# is Phase 1 only: real accounts, real password auth. Phase 2 (a
+# payment provisioning organization_id + issuing an ApiKey) is not
+# built here.
+
+MIN_PASSWORD_LENGTH = 8
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    company_name: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _normalize_email(email: str) -> str:
+
+    email = email.strip().lower()
+
+    if "@" not in email or len(email) < 5 or len(email) > 254:
+
+        raise HTTPException(
+            status_code=400,
+            detail="That doesn't look like a valid email address"
+        )
+
+    return email
+
+
+def _serialize_user(user: models.User) -> dict:
+
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "company_name": user.company_name,
+        "has_dashboard_access": user.organization_id is not None
+    }
+
+
+@app.post("/api/auth/register")
+async def register_user(
+    body: RegisterRequest,
+    db: Session = Depends(get_db)
+):
+
+    email = _normalize_email(body.email)
+
+    if len(body.password) < MIN_PASSWORD_LENGTH:
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters"
+        )
+
+    if not body.full_name.strip() or not body.company_name.strip():
+
+        raise HTTPException(
+            status_code=400,
+            detail="full_name and company_name are required"
+        )
+
+    existing = db.query(models.User).filter(models.User.email == email).first()
+
+    if existing:
+
+        raise HTTPException(
+            status_code=409,
+            detail="An account with that email already exists. Try signing in instead."
+        )
+
+    user = models.User(
+        email=email,
+        hashed_password=hash_password(body.password),
+        full_name=body.full_name.strip(),
+        company_name=body.company_name.strip()
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_session(db, user)
+
+    return {
+        "session_token": token,
+        "user": _serialize_user(user)
+    }
+
+
+@app.post("/api/auth/login")
+async def login_user(
+    body: LoginRequest,
+    db: Session = Depends(get_db)
+):
+
+    email = _normalize_email(body.email)
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+
+    if not user or not verify_password(body.password, user.hashed_password):
+
+        # Deliberately identical error for "no such account" and
+        # "wrong password" -- distinguishing them lets an attacker
+        # enumerate registered emails.
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password"
+        )
+
+    token = create_session(db, user)
+
+    return {
+        "session_token": token,
+        "user": _serialize_user(user)
+    }
+
+
+@app.get("/api/auth/me")
+async def get_current_user_profile(
+    user: models.User = Depends(get_current_user)
+):
+
+    return _serialize_user(user)
+
+
+@app.post("/api/auth/logout")
+async def logout_user(
+    authorization: str = Header(default=None),
+    db: Session = Depends(get_db)
+):
+
+    if authorization and authorization.startswith("Bearer "):
+
+        raw_token = authorization.removeprefix("Bearer ").strip()
+
+        if raw_token:
+
+            db.query(models.UserSession).filter(
+                models.UserSession.token_hash == hash_api_key(raw_token)
+            ).delete()
+
+            db.commit()
+
+    return {"message": "Signed out"}
 
 # ==========================================================
 # FILE UPLOAD

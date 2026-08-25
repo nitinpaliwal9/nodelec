@@ -47,6 +47,51 @@ class Organization(Base):
     rules = relationship("OrganizationRules", back_populates="organization", uselist=False, cascade="all, delete-orphan")
 
 
+class User(Base):
+    """
+    A person who registered on the marketing site -- distinct from
+    ApiKey, which is the dashboard's own machine-to-machine auth.
+    Registering does NOT grant dashboard access by itself:
+    organization_id stays null until Phase 2 (payment) provisions an
+    Organization + ApiKey for them. Nothing in this codebase sets
+    organization_id yet -- that wiring is Phase 2, not built here.
+    """
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, nullable=False)
+    company_name = Column(String, nullable=False)
+
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    organization = relationship("Organization")
+
+
+class UserSession(Base):
+    """
+    A logged-in browser session. Same non-recoverable-token pattern
+    as ApiKey (see auth.py) -- only a hash of the session token is
+    stored, the raw token is handed to the browser once at login and
+    never persisted server-side.
+    """
+    __tablename__ = "user_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    user = relationship("User")
+
+
 class OrganizationRules(Base):
     """
     Operational defaults an org sets once and rarely touches again.
