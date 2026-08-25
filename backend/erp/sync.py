@@ -12,12 +12,18 @@ from erp.tally_connector import (
 )
 
 
-def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
+def upsert_components_from_stock_items(db, organization_id, stock_items: list) -> dict:
     """
-    Pulls stock items from the connection's Tally instance and
-    upserts a ComponentPrice row per item scoped to this organization.
+    The shared core of an ERP sync: given a list of
+    {name, rate, stock_quantity} items from ANY source -- our own
+    direct pull from Tally's local gateway (sync_organization_erp,
+    below) or a push from the Nodelec Tally Agent script running on a
+    distributor's own machine (see main.py's
+    /api/integrations/erp/tally-agent/push) -- match or create the
+    corresponding ComponentMaster row and upsert a ComponentPrice
+    scoped to organization_id.
 
-    A Tally stock item that doesn't already match an existing
+    A stock item that doesn't already match an existing
     ComponentMaster row (by the same normalization the matching engine
     itself uses) is NOT discarded -- it's created. A customer's own
     ERP is the authoritative source for what they actually stock and
@@ -29,35 +35,17 @@ def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
     gets, so a BOM upload referencing this exact string next time
     hits the alias cache directly.
 
-    Records success/failure on the connection itself either way, then
-    re-raises on failure so a caller (CLI, scheduled worker) still
-    sees it happened.
+    Does NOT commit -- the caller decides transaction boundaries
+    (e.g. so it can also update the connection's last_synced_at in
+    the same commit).
     """
 
     stats = {
-        "tally_items_seen": 0,
+        "tally_items_seen": len(stock_items),
         "matched_to_catalog": 0,
         "created_from_erp": 0,
         "unmatched": 0
     }
-
-    try:
-
-        stock_items = fetch_stock_items(
-            erp_connection.host,
-            erp_connection.port,
-            erp_connection.company_name
-        )
-
-    except (TallyConnectionError, TallyResponseError) as exc:
-
-        erp_connection.last_sync_status = f"failed: {exc}"
-        erp_connection.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
-        db.commit()
-
-        raise
-
-    stats["tally_items_seen"] = len(stock_items)
 
     catalog = db.query(models.ComponentMaster).all()
 
@@ -121,7 +109,7 @@ def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
         existing = (
             db.query(models.ComponentPrice)
             .filter(
-                models.ComponentPrice.organization_id == erp_connection.organization_id,
+                models.ComponentPrice.organization_id == organization_id,
                 models.ComponentPrice.component_id == component.id
             )
             .first()
@@ -137,7 +125,7 @@ def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
 
             db.add(
                 models.ComponentPrice(
-                    organization_id=erp_connection.organization_id,
+                    organization_id=organization_id,
                     component_id=component.id,
                     unit_price=item["rate"],
                     stock_quantity=item["stock_quantity"],
@@ -146,6 +134,42 @@ def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
             )
 
         stats["matched_to_catalog"] += 1
+
+    return stats
+
+
+def sync_organization_erp(db, erp_connection: "models.ErpConnection") -> dict:
+    """
+    Pulls stock items directly from the connection's Tally instance
+    (requires our server to be able to reach it -- same-LAN or a
+    tunnel) and upserts them via upsert_components_from_stock_items.
+
+    Records success/failure on the connection itself either way, then
+    re-raises on failure so a caller (CLI, scheduled worker) still
+    sees it happened.
+    """
+
+    try:
+
+        stock_items = fetch_stock_items(
+            erp_connection.host,
+            erp_connection.port,
+            erp_connection.company_name
+        )
+
+    except (TallyConnectionError, TallyResponseError) as exc:
+
+        erp_connection.last_sync_status = f"failed: {exc}"
+        erp_connection.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
+        db.commit()
+
+        raise
+
+    stats = upsert_components_from_stock_items(
+        db,
+        erp_connection.organization_id,
+        stock_items
+    )
 
     erp_connection.last_sync_status = "success"
     erp_connection.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
