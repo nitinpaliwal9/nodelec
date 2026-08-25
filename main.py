@@ -81,7 +81,8 @@ UPLOAD_DIR.mkdir(
 ALLOWED_EXTENSIONS = {
     ".csv",
     ".xlsx",
-    ".xls"
+    ".xls",
+    ".pdf"
 }
 
 MAX_FILE_SIZE_MB = 25
@@ -191,7 +192,7 @@ async def upload_bom_file(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Only CSV/XLS/XLSX files "
+                "Only CSV/XLS/XLSX/PDF files "
                 "are supported."
             )
         )
