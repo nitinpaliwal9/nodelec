@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, FileStack, LogOut, Zap } from 'lucide-react';
+import { LayoutDashboard, FileStack, Settings2, LogOut, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getStoredApiKey, clearStoredApiKey } from '@/lib/api';
 
 const NAV_LINKS = [
   { name: 'Review Queue', href: '/dashboard/review', icon: LayoutDashboard },
   { name: 'Files', href: '/dashboard/files', icon: FileStack },
+  { name: 'Settings', href: '/dashboard/settings', icon: Settings2 },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

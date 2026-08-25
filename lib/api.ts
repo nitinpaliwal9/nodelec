@@ -93,6 +93,8 @@ export interface MatchRow {
   confidence: number;
   match_type: string;
   quantity: number;
+  quoted_quantity: number | null;
+  moq_rounded: boolean;
   unit_price: number | null;
   line_total: number | null;
   currency: string | null;
@@ -104,6 +106,7 @@ export interface FileStatus {
   file_id: string;
   status: string;
   distributor: string;
+  quote_expires_at: string | null;
   summary: {
     rows_processed: number;
     exact_matches: number;
@@ -150,6 +153,27 @@ export function reviewRow(
 
 export function listFiles(): Promise<FileSummary[]> {
   return request('/api/bom/files');
+}
+
+export interface OrganizationRules {
+  quote_validity_hours: number;
+  default_margin_percent: number;
+  moq_enforcement_enabled: boolean;
+  is_default: boolean;
+}
+
+export function getOrganizationRules(): Promise<OrganizationRules> {
+  return request('/api/organization/rules');
+}
+
+export function updateOrganizationRules(
+  rules: Omit<OrganizationRules, 'is_default'>
+): Promise<OrganizationRules> {
+  return request('/api/organization/rules', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rules),
+  });
 }
 
 export function getFileStatus(fileId: string): Promise<FileStatus> {
