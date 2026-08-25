@@ -9,33 +9,24 @@ from database import (
 
 import models
 
+from engine import BOMEngine
+
 models.Base.metadata.create_all(
     bind=engine
 )
 
-def normalize_mpn(mpn: str) -> str:
-
-    return (
-        str(mpn)
-        .upper()
-        .replace("-", "")
-        .replace("/", "")
-        .replace(" ", "")
-    )
+# normalized_mpn / alias generation both delegate to
+# BOMEngine.normalize_mpn (engine/legacy_engine.py) instead of keeping a
+# second, slightly different normalizer here. The two had drifted apart
+# (this one didn't strip packaging suffixes like "-TR"/"-REEL" the way
+# the real matcher does), which meant seeded normalized_mpn values could
+# silently disagree with what the matching engine computes at match time.
 
 def build_aliases(mpn: str):
 
     aliases = set()
 
-    normalized = (
-        mpn
-        .replace("-", "")
-        .replace("/", "")
-        .replace(" ", "")
-        .upper()
-    )
-
-    aliases.add(normalized)
+    aliases.add(BOMEngine.normalize_mpn(mpn))
     aliases.add(mpn.upper())
 
     return aliases
@@ -180,7 +171,7 @@ def seed_enterprise_pipeline_data():
             component = models.ComponentMaster(
                 id=uuid.uuid4(),
                 mpn=item["mpn"],
-                normalized_mpn=normalize_mpn(item["mpn"]),
+                normalized_mpn=BOMEngine.normalize_mpn(item["mpn"]),
                 manufacturer=item["manufacturer"],
                 description=item["description"],
                 category=item["category"],
