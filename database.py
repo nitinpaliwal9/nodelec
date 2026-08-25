@@ -17,6 +17,12 @@ DATABASE_URL = os.getenv(
     "postgresql://postgres:postgres@localhost:5432/bom_matcher"
 )
 
+# Managed Postgres providers (Fly, Heroku, Render, ...) commonly hand out
+# "postgres://" URLs, but SQLAlchemy's psycopg2 dialect only recognizes
+# "postgresql://". Normalize so this works regardless of where it's deployed.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 # ==========================================================
 # ENGINE
 # ==========================================================
