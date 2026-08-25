@@ -709,18 +709,22 @@ def validate_dataframe(
 
 
 # ==========================================================
-# MAIN INGESTION PIPELINE
+# SHARED: RAW ROWS -> DATAFRAME (header detection applied)
 # ==========================================================
 
-def stream_and_clean_qrf(
-    file_bytes: bytes,
-    file_name: str = "data.xlsx"
+def build_dataframe_from_raw_rows(
+    raw_rows: List[list]
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-
-    raw_rows = load_raw_rows(
-        file_bytes,
-        file_name
-    )
+    """
+    The "detect the header (including a fused two-row header),
+    build a DataFrame from whatever's below it" step -- shared by
+    stream_and_clean_qrf (BOM ingestion) and catalog_importer.py
+    (catalog imports), which both need it identically and differ
+    only in which column-alias map they apply afterward. Also means
+    catalog imports get PDF support, multi-row header fusion, the
+    hard-fail-on-undetectable-header behavior, and the ragged-CSV
+    fallback for free, instead of a second, weaker parser.
+    """
 
     header_start, header_end, fused_header, metadata = (
         analyze_sheet_structure(raw_rows)
@@ -752,6 +756,27 @@ def stream_and_clean_qrf(
 
     df = df.dropna(
         how="all"
+    )
+
+    return df, metadata
+
+
+# ==========================================================
+# MAIN INGESTION PIPELINE
+# ==========================================================
+
+def stream_and_clean_qrf(
+    file_bytes: bytes,
+    file_name: str = "data.xlsx"
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+
+    raw_rows = load_raw_rows(
+        file_bytes,
+        file_name
+    )
+
+    df, metadata = build_dataframe_from_raw_rows(
+        raw_rows
     )
 
     df = map_distributor_columns(

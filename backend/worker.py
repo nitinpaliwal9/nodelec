@@ -1,4 +1,5 @@
 import os
+import datetime
 from celery import Celery
 
 from database import SessionLocal
@@ -37,6 +38,48 @@ def _lookup_price(db, organization_id, component_id, quantity):
         round(price.unit_price * quantity, 2),
         price.currency
     )
+
+
+def _apply_moq(db, organization_id, component_id, requested_quantity):
+    """
+    Returns the effective quantity to actually quote/price. Only ever
+    rounds up, and only when BOTH the org has explicitly turned MOQ
+    enforcement on AND the matched component has a known MOQ -- both
+    are opt-in, so a row's quantity is never silently changed by
+    default. Returns requested_quantity unchanged in every other case
+    (no org rules row yet, enforcement off, unknown/zero MOQ).
+    """
+
+    if not organization_id or not component_id:
+        return requested_quantity
+
+    rules = (
+        db.query(models.OrganizationRules)
+        .filter(
+            models.OrganizationRules.organization_id == organization_id
+        )
+        .first()
+    )
+
+    if not rules or not rules.moq_enforcement_enabled:
+        return requested_quantity
+
+    component = (
+        db.query(models.ComponentMaster)
+        .filter(models.ComponentMaster.id == component_id)
+        .first()
+    )
+
+    if not component or not component.moq or component.moq <= 0:
+        return requested_quantity
+
+    if requested_quantity % component.moq == 0:
+        return requested_quantity
+
+    return (
+        (requested_quantity // component.moq) + 1
+    ) * component.moq
+
 
 REDIS_URL = os.getenv(
     "REDIS_URL",
@@ -229,11 +272,18 @@ def process_bom_file_async(file_id: str):
 
             if known_alias:
 
-                unit_price, line_total, price_currency = _lookup_price(
+                quoted_qty = _apply_moq(
                     db,
                     bom_file.organization_id,
                     known_alias.resolved_component_id,
                     qty
+                )
+
+                unit_price, line_total, price_currency = _lookup_price(
+                    db,
+                    bom_file.organization_id,
+                    known_alias.resolved_component_id,
+                    quoted_qty
                 )
 
                 db.add(
@@ -242,6 +292,7 @@ def process_bom_file_async(file_id: str):
                         row_number=index + 1,
                         raw_component_text=raw_text,
                         requested_quantity=qty,
+                        quoted_quantity=quoted_qty,
                         matched_component_id=known_alias.resolved_component_id,
                         matched_mpn=known_alias.component.mpn,
                         match_confidence=1.0,
@@ -271,11 +322,18 @@ def process_bom_file_async(file_id: str):
                 )
             )
 
-            unit_price, line_total, price_currency = _lookup_price(
+            quoted_qty = _apply_moq(
                 db,
                 bom_file.organization_id,
                 match_res["matched_id"],
                 qty
+            )
+
+            unit_price, line_total, price_currency = _lookup_price(
+                db,
+                bom_file.organization_id,
+                match_res["matched_id"],
+                quoted_qty
             )
 
             db.add(
@@ -284,6 +342,7 @@ def process_bom_file_async(file_id: str):
                     row_number=index + 1,
                     raw_component_text=raw_text,
                     requested_quantity=qty,
+                    quoted_quantity=quoted_qty,
                     matched_component_id=match_res["matched_id"],
                     matched_mpn=match_res["matched_mpn"],
                     match_confidence=match_res["confidence"],
@@ -357,6 +416,26 @@ def process_bom_file_async(file_id: str):
 
         bom_file.status = (
             models.FileStatus.COMPLETED
+        )
+
+        org_rules = (
+            db.query(models.OrganizationRules)
+            .filter(
+                models.OrganizationRules.organization_id
+                == bom_file.organization_id
+            )
+            .first()
+        )
+
+        validity_hours = (
+            org_rules.quote_validity_hours
+            if org_rules
+            else models.OrganizationRules.DEFAULT_QUOTE_VALIDITY_HOURS
+        )
+
+        bom_file.quote_expires_at = (
+            datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(hours=validity_hours)
         )
 
         db.commit()

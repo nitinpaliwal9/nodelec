@@ -402,6 +402,9 @@ async def get_file_processing_status(
         "distributor":
             bom_file.distributor_id,
 
+        "quote_expires_at":
+            bom_file.quote_expires_at,
+
         "summary": {
 
             "rows_processed":
@@ -455,6 +458,15 @@ async def get_file_processing_status(
 
                 "quantity":
                     r.requested_quantity,
+
+                "quoted_quantity":
+                    r.quoted_quantity,
+
+                "moq_rounded":
+                    (
+                        r.quoted_quantity is not None
+                        and r.quoted_quantity != r.requested_quantity
+                    ),
 
                 "unit_price":
                     r.unit_price,
@@ -712,3 +724,99 @@ async def list_uploaded_files(
 
         for f in files
     ]
+
+# ==========================================================
+# ORGANIZATION RULES
+# ==========================================================
+
+class OrganizationRulesRequest(BaseModel):
+    quote_validity_hours: int
+    default_margin_percent: float
+    moq_enforcement_enabled: bool
+
+
+def _serialize_rules(rules) -> dict:
+
+    if rules is None:
+
+        return {
+            "quote_validity_hours":
+                models.OrganizationRules.DEFAULT_QUOTE_VALIDITY_HOURS,
+            "default_margin_percent":
+                models.OrganizationRules.DEFAULT_MARGIN_PERCENT,
+            "moq_enforcement_enabled":
+                False,
+            "is_default":
+                True
+        }
+
+    return {
+        "quote_validity_hours": rules.quote_validity_hours,
+        "default_margin_percent": rules.default_margin_percent,
+        "moq_enforcement_enabled": rules.moq_enforcement_enabled,
+        "is_default": False
+    }
+
+
+@app.get("/api/organization/rules")
+async def get_organization_rules(
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
+):
+
+    rules = (
+        db.query(models.OrganizationRules)
+        .filter(
+            models.OrganizationRules.organization_id == organization.id
+        )
+        .first()
+    )
+
+    return _serialize_rules(rules)
+
+
+@app.put("/api/organization/rules")
+async def update_organization_rules(
+    body: OrganizationRulesRequest,
+    db: Session = Depends(get_db),
+    organization: models.Organization = Depends(get_current_organization)
+):
+
+    if not (1 <= body.quote_validity_hours <= 168):
+
+        raise HTTPException(
+            status_code=400,
+            detail="quote_validity_hours must be between 1 and 168 (a week)"
+        )
+
+    if not (0 <= body.default_margin_percent <= 500):
+
+        raise HTTPException(
+            status_code=400,
+            detail="default_margin_percent must be between 0 and 500"
+        )
+
+    rules = (
+        db.query(models.OrganizationRules)
+        .filter(
+            models.OrganizationRules.organization_id == organization.id
+        )
+        .first()
+    )
+
+    if not rules:
+
+        rules = models.OrganizationRules(
+            organization_id=organization.id
+        )
+
+        db.add(rules)
+
+    rules.quote_validity_hours = body.quote_validity_hours
+    rules.default_margin_percent = body.default_margin_percent
+    rules.moq_enforcement_enabled = body.moq_enforcement_enabled
+
+    db.commit()
+    db.refresh(rules)
+
+    return _serialize_rules(rules)
