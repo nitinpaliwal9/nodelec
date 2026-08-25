@@ -7,6 +7,37 @@ import models
 from engine import BOMEngine
 from parsers.ingestion_gateway import stream_and_clean_qrf
 
+
+def _lookup_price(db, organization_id, component_id, quantity):
+    """
+    Prices are per-organization (see models.ComponentPrice), so a row
+    only ever gets priced against its own file's org -- never a global
+    or another tenant's price. Missing organization_id (legacy/
+    unassigned files) or no synced price for that org+component both
+    just mean "no price available", not an error.
+    """
+
+    if not organization_id or not component_id:
+        return None, None, None
+
+    price = (
+        db.query(models.ComponentPrice)
+        .filter(
+            models.ComponentPrice.organization_id == organization_id,
+            models.ComponentPrice.component_id == component_id
+        )
+        .first()
+    )
+
+    if not price:
+        return None, None, None
+
+    return (
+        price.unit_price,
+        round(price.unit_price * quantity, 2),
+        price.currency
+    )
+
 REDIS_URL = os.getenv(
     "REDIS_URL",
     "redis://localhost:6379/0"
@@ -184,6 +215,13 @@ def process_bom_file_async(file_id: str):
 
             if known_alias:
 
+                unit_price, line_total, price_currency = _lookup_price(
+                    db,
+                    bom_file.organization_id,
+                    known_alias.resolved_component_id,
+                    qty
+                )
+
                 db.add(
                     models.BOMRow(
                         file_id=bom_file.id,
@@ -194,6 +232,9 @@ def process_bom_file_async(file_id: str):
                         matched_mpn=known_alias.component.mpn,
                         match_confidence=1.0,
                         match_status=models.MatchType.EXACT,
+                        unit_price=unit_price,
+                        line_total=line_total,
+                        price_currency=price_currency,
                         extracted_metadata={
                             "source": "alias_cache_hit"
                         }
@@ -213,6 +254,13 @@ def process_bom_file_async(file_id: str):
                 )
             )
 
+            unit_price, line_total, price_currency = _lookup_price(
+                db,
+                bom_file.organization_id,
+                match_res["matched_id"],
+                qty
+            )
+
             db.add(
                 models.BOMRow(
                     file_id=bom_file.id,
@@ -223,6 +271,9 @@ def process_bom_file_async(file_id: str):
                     matched_mpn=match_res["matched_mpn"],
                     match_confidence=match_res["confidence"],
                     match_status=match_res["status"],
+                    unit_price=unit_price,
+                    line_total=line_total,
+                    price_currency=price_currency,
                     extracted_metadata={
                         **match_res["metadata"],
                         "distributor": distributor,
