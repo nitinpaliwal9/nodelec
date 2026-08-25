@@ -2,8 +2,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
-import { Header } from '@/components/nodelec/header'
-import { ContactFooter } from '@/components/nodelec/contact-footer'
+import { SiteChrome } from '@/components/nodelec/site-chrome'
 
 const geist = Geist({ subsets: ["latin"] });
 const geistMono = Geist_Mono({ subsets: ["latin"] });
@@ -93,9 +92,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geist.className} antialiased`}>
-        <Header />
-        {children}
-        <ContactFooter />
+        <SiteChrome>{children}</SiteChrome>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
