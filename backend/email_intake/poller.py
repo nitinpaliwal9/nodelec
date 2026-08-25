@@ -3,14 +3,10 @@
 import os
 import uuid
 import datetime
-import threading
-import queue as queue_module
 from pathlib import Path
 
 from database import SessionLocal
 import models
-
-from worker import process_bom_file_async
 
 from email_intake.gateway import (
     ImapSession,
@@ -20,37 +16,6 @@ from email_intake.gateway import (
 
 UPLOAD_DIR = Path("./storage/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-ENQUEUE_TIMEOUT_SECONDS = 5
-
-
-def _enqueue_with_timeout(file_id: str, timeout: float) -> None:
-    """
-    Same bounded-wait pattern as the upload API (main.py) -- a hung
-    broker must never be able to stall the whole polling loop.
-    """
-
-    result_queue: "queue_module.Queue" = queue_module.Queue(maxsize=1)
-
-    def _worker():
-
-        try:
-            process_bom_file_async.delay(file_id)
-            result_queue.put((True, None))
-
-        except Exception as exc:
-            result_queue.put((False, exc))
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-    try:
-        ok, err = result_queue.get(timeout=timeout)
-
-    except queue_module.Empty:
-        raise TimeoutError(f"Broker did not respond within {timeout}s")
-
-    if not ok:
-        raise err
 
 
 def _save_attachment(filename: str, content: bytes) -> str:
@@ -113,10 +78,8 @@ def process_mailbox(db, mailbox: models.MailboxConnection) -> dict:
                     db.commit()
                     db.refresh(db_file)
 
-                    _enqueue_with_timeout(
-                        str(db_file.id),
-                        ENQUEUE_TIMEOUT_SECONDS
-                    )
+                    # Left PENDING -- background_worker.py's poll loop
+                    # (running in this same process) picks it up.
 
                     stats["attachments_ingested"] += 1
 

@@ -4,8 +4,6 @@ import os
 import shutil
 import secrets
 import datetime
-import threading
-import queue as queue_module
 from pathlib import Path
 
 from fastapi import (
@@ -39,10 +37,7 @@ from auth import (
 from crypto_utils import encrypt_secret
 from email_intake.crypto import encrypt_password
 from erp.sync import upsert_components_from_stock_items
-
-from worker import (
-    process_bom_file_async
-)
+from background_worker import start_background_workers
 
 # ==========================================================
 # DATABASE INIT
@@ -87,6 +82,14 @@ UPLOAD_DIR.mkdir(
     exist_ok=True
 )
 
+
+@app.on_event("startup")
+def _launch_background_workers():
+    # BOM file processing, email intake polling, and ERP sync all run
+    # as daemon threads in this same process -- see background_worker.py
+    # for why (no Redis/Celery, fits inside a single free-tier host).
+    start_background_workers()
+
 ALLOWED_EXTENSIONS = {
     ".csv",
     ".xlsx",
@@ -95,69 +98,6 @@ ALLOWED_EXTENSIONS = {
 }
 
 MAX_FILE_SIZE_MB = 25
-
-# ==========================================================
-# ENQUEUE RELIABILITY
-# ==========================================================
-# process_bom_file_async.delay() can hang far longer than its
-# configured broker socket timeout when the broker (Redis) is
-# unreachable, which would otherwise hang the HTTP request
-# indefinitely. Run it on a daemon thread and bound the wait
-# with a hard wall-clock timeout so the request always resolves
-# quickly, whether the broker responds or not. A daemon thread
-# (rather than a pooled worker) also means a permanently-hung
-# enqueue attempt can never block server shutdown.
-
-ENQUEUE_TIMEOUT_SECONDS = 5
-
-
-def _enqueue_with_timeout(
-    file_id: str,
-    timeout: float
-) -> None:
-
-    result_queue: "queue_module.Queue" = (
-        queue_module.Queue(maxsize=1)
-    )
-
-    def _worker():
-
-        try:
-
-            process_bom_file_async.delay(
-                file_id
-            )
-
-            result_queue.put(
-                (True, None)
-            )
-
-        except Exception as exc:
-
-            result_queue.put(
-                (False, exc)
-            )
-
-    threading.Thread(
-        target=_worker,
-        daemon=True
-    ).start()
-
-    try:
-
-        ok, err = result_queue.get(
-            timeout=timeout
-        )
-
-    except queue_module.Empty:
-
-        raise TimeoutError(
-            f"Broker did not respond "
-            f"within {timeout}s"
-        )
-
-    if not ok:
-        raise err
 
 # ==========================================================
 # HEALTH CHECK
@@ -241,39 +181,9 @@ async def upload_bom_file(
 
     db.refresh(db_file)
 
-    try:
-
-        _enqueue_with_timeout(
-            str(db_file.id),
-            ENQUEUE_TIMEOUT_SECONDS
-        )
-
-    except Exception as exc:
-
-        db_file.status = (
-            models.FileStatus.FAILED
-        )
-
-        db.add(
-            models.ProcessingError(
-                file_id=db_file.id,
-                stage="enqueue",
-                error_message=(
-                    f"Failed to queue file for "
-                    f"processing: {exc}"
-                )
-            )
-        )
-
-        db.commit()
-
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Processing queue is currently "
-                "unavailable. Please try again shortly."
-            )
-        )
+    # No queue to push onto -- the file stays PENDING and
+    # background_worker.py's poll loop (running in this same
+    # process) picks it up within BOM_POLL_INTERVAL_SECONDS.
 
     return {
         "message":

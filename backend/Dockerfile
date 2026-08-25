@@ -15,8 +15,14 @@ COPY . .
 
 RUN mkdir -p storage/uploads
 
-RUN chmod +x start.sh
-
 EXPOSE 8000
 
-CMD ["./start.sh"]
+# BOM processing, email intake, and ERP sync all run as background
+# threads inside this one process (see background_worker.py) -- no
+# separate worker process/container needed anymore.
+#
+# Shell form (not JSON-array) deliberately -- PaaS hosts like Render
+# assign a random port via $PORT and expect the app to bind to it,
+# and only shell form expands environment variables. Falls back to
+# 8000 when $PORT isn't set (local Docker runs, docker-compose, etc).
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}

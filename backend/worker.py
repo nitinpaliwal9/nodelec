@@ -1,7 +1,6 @@
 import os
 import re
 import datetime
-from celery import Celery
 
 from database import SessionLocal
 import models
@@ -172,38 +171,16 @@ def _match_with_alternatives(
     )
 
 
-REDIS_URL = os.getenv(
-    "REDIS_URL",
-    "redis://localhost:6379/0"
-)
-
-celery_app = Celery(
-    "bom_tasks",
-    broker=REDIS_URL,
-    backend=REDIS_URL
-)
-
-# ==========================================================
-# BROKER RELIABILITY CONFIG
-# ==========================================================
-# Without these, a downed broker makes .delay() calls hang or
-# retry silently for a long time instead of failing fast, which
-# leaves the HTTP request (and the caller) hanging indefinitely.
-
-celery_app.conf.update(
-    broker_transport_options={
-        "socket_connect_timeout": 3,
-        "socket_timeout": 3,
-    },
-    broker_connection_retry_on_startup=False,
-    broker_connection_retry=False,
-    broker_connection_max_retries=1,
-    task_publish_retry=False,
-)
-
-
-@celery_app.task(name="process_bom_file_async")
-def process_bom_file_async(file_id: str):
+def process_bom_file(file_id: str):
+    """
+    Runs the full ingestion -> matching -> pricing pipeline for one
+    file. Called by background_worker.py's poll loop -- not queued
+    through Celery/Redis. That indirection existed only to let an
+    HTTP request return immediately while a separate worker process
+    did the work; a background poll loop inside the same process
+    gets the same effect (the upload endpoint never blocks on this)
+    without needing a broker to be running and reachable.
+    """
 
     db = SessionLocal()
     bom_file = None
