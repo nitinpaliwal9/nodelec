@@ -20,6 +20,16 @@ class BOMEngine:
     # suffix that isn't in the known packaging-suffix list).
     FUZZY_AUTO_ACCEPT_FLOOR = 97.0
 
+    # Description-fallback matching only ever runs when MPN-based
+    # matching (exact + fuzzy) found nothing, and it never auto-accepts
+    # -- a description can't uniquely pin down one specific variant the
+    # way an MPN can (tolerance, package, taping all get lost), so any
+    # hit always lands in REVIEW regardless of score. This cutoff was
+    # tuned empirically: real descriptive queries against their correct
+    # part scored 70-100, unrelated/garbage queries topped out around
+    # 25-26, so 65 sits well clear of that noise floor with margin.
+    DESCRIPTION_MATCH_CUTOFF = 65.0
+
     # =====================================================
     # NORMALIZATION
     # =====================================================
@@ -157,6 +167,95 @@ class BOMEngine:
             "extracted_package":
                 package[0]
                 if package else None
+        }
+
+    # =====================================================
+    # DESCRIPTION / CATEGORY FALLBACK MATCHING
+    # =====================================================
+    # Customers frequently describe a part instead of quoting its exact
+    # MPN ("10k resistor 0603" instead of "RC0603FR-0710KL"). MPN-based
+    # matching never has a chance against that -- it only ever compares
+    # against the .mpn string. This builds a searchable blob per
+    # component (its MPN broken into word tokens, plus manufacturer/
+    # category/description) and scores the input against it with
+    # token-set matching, which tolerates word-order differences and
+    # extra/missing words far better than the character-level scorer
+    # used for MPN comparison.
+
+    @staticmethod
+    def build_searchable_text(component) -> str:
+
+        # Break the MPN into word-like chunks too ("ESP32-WROOM-32E-N4"
+        # -> "ESP32 WROOM 32E N4") so a customer naming just the family
+        # prefix ("ESP32 module") still has something to match against
+        # -- that prefix usually never appears in the description text.
+        mpn_tokens = re.sub(
+            r'[^A-Za-z0-9]+',
+            ' ',
+            component.mpn or ''
+        )
+
+        parts = [
+            mpn_tokens,
+            component.manufacturer or '',
+            component.category or '',
+            component.description or ''
+        ]
+
+        return ' '.join(parts).upper()
+
+    @classmethod
+    def match_by_description(
+        cls,
+        raw_text: str,
+        inventory_pool: list
+    ) -> dict:
+        """
+        Returns a match dict (always MatchType.REVIEW) if the input
+        scores above DESCRIPTION_MATCH_CUTOFF against some component's
+        searchable text, else None. Never auto-accepts -- description
+        matching can identify the right *family* of part but can't
+        pin down the exact variant the way an MPN comparison can.
+        """
+
+        catalog_text = {
+            component.mpn: cls.build_searchable_text(component)
+            for component in inventory_pool
+        }
+
+        if not catalog_text:
+            return None
+
+        best_match = process.extractOne(
+            raw_text.upper(),
+            catalog_text,
+            scorer=fuzz.token_set_ratio,
+            score_cutoff=cls.DESCRIPTION_MATCH_CUTOFF
+        )
+
+        if not best_match:
+            return None
+
+        matched_mpn = best_match[2]
+
+        score = float(best_match[1])
+
+        matched_component = next(
+            c for c in inventory_pool
+            if c.mpn == matched_mpn
+        )
+
+        return {
+            "matched_id": matched_component.id,
+            "matched_mpn": matched_component.mpn,
+            "confidence": round(score / 100.0, 2),
+            "status": MatchType.REVIEW,
+            "metadata": {
+                "match_strategy": "description_fallback",
+                "review_reason": "description_match_not_mpn",
+                "description_score": score,
+                "matched_against": catalog_text[matched_mpn]
+            }
         }
 
     # =====================================================
@@ -359,6 +458,28 @@ class BOMEngine:
                         )
                     }
             }
+
+        # =================================================
+        # DESCRIPTION / CATEGORY FALLBACK
+        # =================================================
+        # Nothing matched on the MPN itself -- try matching the raw
+        # text against what each component *is* (description/category/
+        # manufacturer, plus the MPN broken into word tokens) before
+        # giving up. Always comes back as REVIEW, never auto-accepted.
+
+        description_match = cls.match_by_description(
+            raw_text,
+            inventory_pool
+        )
+
+        if description_match:
+
+            description_match["metadata"] = {
+                **tokens,
+                **description_match["metadata"]
+            }
+
+            return description_match
 
         # =================================================
         # UNMATCHED
