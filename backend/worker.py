@@ -1,4 +1,5 @@
 import os
+import re
 import datetime
 from celery import Celery
 
@@ -79,6 +80,96 @@ def _apply_moq(db, organization_id, component_id, requested_quantity):
     return (
         (requested_quantity // component.moq) + 1
     ) * component.moq
+
+
+DNP_PATTERN = re.compile(r"\bDNP\b", re.IGNORECASE)
+
+
+def _is_dnp_row(*texts: str) -> bool:
+    """
+    Real customer BOMs mark a "Do Not Populate" line by embedding
+    "DNP" directly in the part number or description cell (e.g.
+    "DNP/0603") rather than a dedicated status column/value -- there's
+    nothing to match against a real component for a position that was
+    never meant to be sourced, so this must be checked before the row
+    reaches the matching engine at all.
+    """
+
+    return any(DNP_PATTERN.search(text) for text in texts if text)
+
+
+def _match_with_alternatives(
+    raw_text: str,
+    master_pool,
+    normalized_inventory,
+    catalog_text,
+    mpn_lookup
+):
+    """
+    Some customers list more than one acceptable MPN on a single line,
+    comma-separated (e.g. "AC0805KKX5R9BB225, CQ2012X7R225K250NR" --
+    either is fine to quote). Matching the whole concatenated string
+    as one part number never matches anything real, so split on comma
+    and try each candidate independently, keeping the best result.
+    A no-op for the overwhelming common case of a single part per
+    line (no comma) -- one call to match_component, same as before.
+
+    Returns (match_result, alternatives_metadata_or_None).
+    """
+
+    candidates = [c.strip() for c in raw_text.split(",") if c.strip()]
+
+    if len(candidates) <= 1:
+
+        return (
+            BOMEngine.match_component(
+                raw_text,
+                master_pool,
+                normalized_inventory=normalized_inventory,
+                catalog_text=catalog_text,
+                mpn_lookup=mpn_lookup
+            ),
+            None
+        )
+
+    status_rank = {
+        models.MatchType.EXACT: 3,
+        models.MatchType.FUZZY: 2,
+        models.MatchType.REVIEW: 1,
+        models.MatchType.UNMATCHED: 0
+    }
+
+    best_result = None
+    best_candidate = None
+
+    for candidate in candidates:
+
+        result = BOMEngine.match_component(
+            candidate,
+            master_pool,
+            normalized_inventory=normalized_inventory,
+            catalog_text=catalog_text,
+            mpn_lookup=mpn_lookup
+        )
+
+        rank = (status_rank[result["status"]], result["confidence"])
+
+        best_rank = (
+            (status_rank[best_result["status"]], best_result["confidence"])
+            if best_result else (-1, -1)
+        )
+
+        if rank > best_rank:
+            best_result = result
+            best_candidate = candidate
+
+    return (
+        best_result,
+        {
+            "alternatives_offered": candidates,
+            "matched_alternative": best_candidate
+        }
+    )
 
 
 REDIS_URL = os.getenv(
@@ -245,6 +336,32 @@ def process_bom_file_async(file_id: str):
                 )
             ).strip()
 
+            description_text = str(
+                row.get(
+                    "description",
+                    ""
+                )
+            ).strip()
+
+            if _is_dnp_row(raw_text, description_text):
+
+                db.add(
+                    models.BOMRow(
+                        file_id=bom_file.id,
+                        row_number=index + 1,
+                        raw_component_text=raw_text or description_text,
+                        requested_quantity=int(row.get("quantity", 1)),
+                        match_status=models.MatchType.UNMATCHED,
+                        match_confidence=0.0,
+                        extracted_metadata={
+                            "reason": "dnp_not_populated",
+                            "description": description_text or None
+                        }
+                    )
+                )
+
+                continue
+
             if not raw_text:
                 continue
 
@@ -312,14 +429,12 @@ def process_bom_file_async(file_id: str):
             # MATCH ENGINE
             # -------------------------------------------------
 
-            match_res = (
-                BOMEngine.match_component(
-                    raw_text,
-                    master_pool,
-                    normalized_inventory=normalized_inventory,
-                    catalog_text=catalog_text,
-                    mpn_lookup=mpn_lookup
-                )
+            match_res, alternatives_metadata = _match_with_alternatives(
+                raw_text,
+                master_pool,
+                normalized_inventory,
+                catalog_text,
+                mpn_lookup
             )
 
             quoted_qty = _apply_moq(
@@ -355,6 +470,10 @@ def process_bom_file_async(file_id: str):
                         "distributor": distributor,
                         "customer_name": metadata.get(
                             "customer_name"
+                        ),
+                        **(
+                            {"alternatives": alternatives_metadata}
+                            if alternatives_metadata else {}
                         )
                     }
                 )

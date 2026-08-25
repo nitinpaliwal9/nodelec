@@ -86,6 +86,18 @@ COLUMN_ALIASES = {
         "competitor part number",
         "cross reference",
         "alternate part"
+    ],
+
+    # Not used for matching -- only consulted so a DNP ("Do Not
+    # Populate") marker embedded here (e.g. "DNP/0603") can be
+    # detected before a row is fed to the matching engine. Real
+    # customer BOMs keep this clearly separate from any part-number
+    # column, so mapping it doesn't risk swallowing an MPN column.
+    "description": [
+        "description",
+        "component description",
+        "part description",
+        "part name"
     ]
 }
 
@@ -110,46 +122,43 @@ def normalize_quantity(raw_qty_val: Any) -> int:
         "NAN",
         "NULL",
         "-",
-        "NONE"
+        "NONE",
+        "N/A",
+        "#N/A"
     ):
         return 0
 
     qty_str = qty_str.replace(",", "")
 
-    qty_str = re.sub(
-        r"\s*(PCS|PIECES|UNITS|NOS|PACKS)\b",
-        "",
+    # Real customer quantity cells aren't always a bare number -- forecast
+    # figures come as "250K PCS./ YEAR", "60K ANNUAL", "180K MONTHLY", "Qty
+    # for 5000 boards". Search for the first number (with an optional K/M
+    # multiplier immediately after it) anywhere in the string instead of
+    # requiring the whole cell to be only digits: an anchored ^...$ match
+    # silently fails the moment there's trailing text, and used to fall
+    # through to a naive digit-strip that dropped the multiplier entirely
+    # ("250K PCS./ YEAR" -> 250, a 1000x under-quote instead of 250,000).
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*([KM])?\b",
         qty_str
     )
 
-    match = re.match(
-        r"^([\d\.]+)\s*([KM])?$",
-        qty_str
+    if not match:
+        return 0
+
+    base_number = float(
+        match.group(1)
     )
 
-    if match:
+    multiplier = match.group(2)
 
-        base_number = float(
-            match.group(1)
-        )
+    if multiplier == "K":
+        return int(base_number * 1000)
 
-        multiplier = match.group(2)
+    if multiplier == "M":
+        return int(base_number * 1000000)
 
-        if multiplier == "K":
-            return int(base_number * 1000)
-
-        if multiplier == "M":
-            return int(base_number * 1000000)
-
-        return int(base_number)
-
-    fallback = re.sub(
-        r"\D",
-        "",
-        qty_str
-    )
-
-    return int(fallback) if fallback else 0
+    return int(base_number)
 
 
 # ==========================================================
