@@ -27,3 +27,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Generated test catalog (regenerate with scripts/generate_mock_catalog.py)
+# -- large and trivially reproducible, no need to version it.
+# sample_daily_bom.csv is small and kept as a ready-to-use fixture.
+test_data/mock_formax_catalog.csv

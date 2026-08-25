@@ -3,17 +3,21 @@ from types import SimpleNamespace
 from engine import BOMEngine
 
 # 1. Simulating the Distributor's Active Warehouse Inventory database mirror
-#    BOMEngine.match_component expects ComponentMaster-like objects
-#    (with .id and .mpn attributes), not raw strings.
+#    BOMEngine.match_component expects ComponentMaster-like objects --
+#    id/mpn for MPN matching, manufacturer/category/description too
+#    since the description-fallback path (engine/legacy_engine.py)
+#    reads all three. Real ComponentMaster rows always have these;
+#    this fixture needs to as well or it doesn't represent what the
+#    engine actually runs against in production.
 mock_warehouse_inventory = [
-    SimpleNamespace(id=idx, mpn=mpn)
-    for idx, mpn in enumerate(
+    SimpleNamespace(id=idx, mpn=mpn, manufacturer=mfr, category=category, description=desc)
+    for idx, (mpn, mfr, category, desc) in enumerate(
         [
-            "STM32F103C8T6",
-            "NE555DR",
-            "NE555P",
-            "RC0603JR-0710KL",  # Yageo 10k Resistor
-            "CL21A106KPCLRNC"   # Samsung 10uF Capacitor
+            ("STM32F103C8T6", "STMicroelectronics", "Integrated Circuits (ICs)", "ARM Cortex-M3 MCU"),
+            ("NE555DR", "Texas Instruments", "Interface ICs", "Precision Timer SOIC-8"),
+            ("NE555P", "Texas Instruments", "Interface ICs", "Precision Timer DIP-8"),
+            ("RC0603JR-0710KL", "Yageo", "Passive Components", "Thick Film Resistor 10k Ohms 5% SMD 0603"),
+            ("CL21A106KPCLRNC", "Samsung Electro-Mechanics", "Passive Components", "Capacitor Ceramic 10uF X5R SMD 0805"),
         ],
         start=1
     )
