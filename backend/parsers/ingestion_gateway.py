@@ -68,7 +68,12 @@ COLUMN_ALIASES = {
         "part id",
         "sku",
         "mfr part number",
-        "component part number"
+        "component part number",
+        # SAP-style RFQs (e.g. a buyer's SAP MM export pasted into an
+        # email) label this column "Material", not any part-number
+        # variant -- real example: a Halonix RFQ using SAP field
+        # names throughout ("Material", "Short Text", below).
+        "material"
     ],
 
     "quantity": [
@@ -79,7 +84,10 @@ COLUMN_ALIASES = {
         "required qty",
         "required quantity",
         "requested quantity",
-        "requested qty"
+        "requested qty",
+        # SAP's own column order is noun-first ("Quantity requested"),
+        # the reverse of the "requested quantity" alias above.
+        "quantity requested"
     ],
 
     "competitor_part": [
@@ -97,7 +105,8 @@ COLUMN_ALIASES = {
         "description",
         "component description",
         "part description",
-        "part name"
+        "part name",
+        "short text"
     ]
 }
 
@@ -408,6 +417,40 @@ def _pad_ragged_rows(rows: List[list]) -> List[list]:
 
 
 # ==========================================================
+# HTML EXTRACTION -- inline email-body tables
+# ==========================================================
+
+def _extract_html_rows(file_bytes: bytes) -> List[list]:
+    """
+    Pulls the BOM table out of an HTML email body (an RFQ pasted
+    directly into the message rather than attached as a file -- e.g.
+    a buyer's SAP export copied straight into their mail client).
+
+    An email body commonly contains several unrelated <table>
+    elements (layout tables, a signature block with a logo cell,
+    etc.) alongside the real one, so this picks the table with the
+    most rows on the assumption that a genuine line-item list is
+    always the largest table in the message -- a two- or three-row
+    signature table isn't going to out-score a real BOM. If that
+    heuristic ever picks the wrong table, header detection downstream
+    (analyze_sheet_structure) still fails loudly rather than silently
+    matching garbage, the same as any other unparseable file.
+    """
+
+    tables = pd.read_html(io.BytesIO(file_bytes), header=None)
+
+    if not tables:
+
+        raise BOMParsingException(
+            "No table found in the email body."
+        )
+
+    best = max(tables, key=lambda df: df.shape[0])
+
+    return _pad_ragged_rows(best.values.tolist())
+
+
+# ==========================================================
 # RAW ROW LOADING (format dispatch)
 # ==========================================================
 
@@ -415,7 +458,7 @@ def load_raw_rows(file_bytes: bytes, file_name: str) -> List[list]:
     """
     Returns a file's contents as a plain grid (list of rows, each a
     list of cell values), regardless of source format -- the one
-    place that knows how to read .csv/.xlsx/.xls/.pdf, so header
+    place that knows how to read .csv/.xlsx/.xls/.pdf/.html, so header
     detection and column mapping downstream never need to care which
     format they're looking at.
     """
@@ -430,6 +473,10 @@ def load_raw_rows(file_bytes: bytes, file_name: str) -> List[list]:
         )
 
         return df.values.tolist()
+
+    if lower_name.endswith(".html") or lower_name.endswith(".htm"):
+
+        return _extract_html_rows(file_bytes)
 
     if lower_name.endswith(".pdf"):
 
