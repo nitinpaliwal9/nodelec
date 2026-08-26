@@ -8,7 +8,7 @@ from typing import List, Tuple, Optional
 
 from email_intake.crypto import decrypt_password
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf"}
 
 
 def decode_mime_filename(raw_filename: str) -> str:
@@ -77,6 +77,33 @@ def extract_attachments(message: Message) -> List[Tuple[str, bytes]]:
 def extract_sender(message: Message) -> str:
 
     return message.get("From", "unknown@unknown")
+
+
+def extract_html_body(message: Message) -> Optional[bytes]:
+    """
+    Falls back to the email's own HTML body when it carries no
+    attachment at all -- some RFQs arrive as a table pasted directly
+    into the message (e.g. an SAP export copied straight into the
+    mail client) rather than a separate file. Returns None if there's
+    no HTML part, or the HTML part has no <table> in it (a plain-text
+    reply, a signature-only message, etc.), so the caller can tell
+    "nothing to parse" apart from "found something".
+    """
+
+    for part in message.walk():
+
+        if part.get_content_type() != "text/html":
+            continue
+
+        payload = part.get_payload(decode=True)
+
+        if not payload:
+            continue
+
+        if b"<table" in payload.lower():
+            return payload
+
+    return None
 
 
 class ImapSession:
