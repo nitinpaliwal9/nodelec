@@ -1,23 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Mail, MapPin, Phone, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { Mail, MapPin, Phone, Send, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { getSupabaseClient } from '@/lib/supabase';
+import { formatINR } from '@/lib/pricing';
+
+function buildRoiPrefill(params: URLSearchParams): string {
+  if (params.get('source') !== 'roi_calculator') return '';
+  const rfqs = params.get('rfqs');
+  const hours = params.get('hours');
+  const automation = params.get('automation');
+  const plan = params.get('plan');
+  const value = params.get('value');
+
+  const lines = ['From the business-case calculator:'];
+  if (rfqs) lines.push(`- ${rfqs} RFQs/month`);
+  if (hours) lines.push(`- ~${Number(hours).toLocaleString('en-IN')} manual hours/year at current volume`);
+  if (automation) lines.push(`- ${automation}% estimated automation opportunity`);
+  if (value) lines.push(`- ~${formatINR(Number(value))}/year illustrative operational value`);
+  if (plan) lines.push(`- Interested in the ${plan} plan`);
+  lines.push('', "I'd like to talk through this.");
+  return lines.join('\n');
+}
 
 export default function ContactPage() {
+  const [prefillMessage, setPrefillMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrefillMessage(buildRoiPrefill(new URLSearchParams(window.location.search)));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setError(null);
     setIsSubmitting(true);
 
     const supabase = getSupabaseClient();
 
     if (!supabase) {
-      alert("This form isn't configured yet -- please email hello@nodelec.in directly.");
+      setError("This form isn't configured yet -- please email hello@nodelec.in directly.");
       setIsSubmitting(false);
       return;
     }
@@ -30,10 +59,10 @@ export default function ContactPage() {
       message: formData.get('message'),
     };
 
-    const { error } = await supabase.from('leads').insert([payload]);
+    const { error: submitError } = await supabase.from('leads').insert([payload]);
 
-    if (error) {
-      alert("Error: " + error.message);
+    if (submitError) {
+      setError(submitError.message);
     } else {
       setIsSuccess(true);
     }
@@ -54,11 +83,11 @@ export default function ContactPage() {
             transition={{ duration: 0.6 }}
           >
             <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">
-              Let's build the <span className="text-primary">future</span> of electronics.
+              Start a <span className="text-primary">Nodelec</span> pilot.
             </h1>
             <p className="text-muted-foreground text-lg mb-12 max-w-md">
-              Have questions about our AI agents or need a custom ERP integration? 
-              Reach out to hmara team.
+              Tell us about your RFQ workflow and we&apos;ll get back to you to figure out whether Nodelec
+              is a fit &mdash; no auto-generated response, an actual person reads this.
             </p>
 
             <div className="space-y-8">
@@ -95,15 +124,15 @@ export default function ContactPage() {
           </motion.div>
 
           {/* Right Side: Contact Form */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="p-8 rounded-3xl border border-border bg-card/50 backdrop-blur-sm shadow-2xl"
+            className="p-8 rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm shadow-2xl"
           >
             {isSuccess ? (
               <div className="h-full flex flex-col items-center justify-center text-center space-y-4 py-16">
-                <CheckCircle2 className="w-16 h-16 text-green-500" />
+                <CheckCircle2 className="w-16 h-16 text-primary" />
                 <h2 className="text-2xl font-bold">Message Sent!</h2>
                 <p className="text-muted-foreground max-w-xs">Thank you for reaching out. We have received your details and will get back to you shortly.</p>
                 <Button onClick={() => setIsSuccess(false)} variant="outline">Send Another</Button>
@@ -112,46 +141,63 @@ export default function ContactPage() {
               <form className="space-y-6" onSubmit={handleSubmit}>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Full Name</label>
-                    <input 
-                      name="fullName" required
-                      type="text" 
-                      placeholder="Nitin Paliwal" 
-                      className="w-full p-3 rounded-xl bg-background border border-border focus:border-primary outline-none transition-all"
+                    <Label htmlFor="fullName">Full Name</Label>
+                    <Input
+                      id="fullName"
+                      name="fullName"
+                      required
+                      type="text"
+                      placeholder="Nitin Paliwal"
+                      className="h-12 rounded-xl"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Work Email</label>
-                    <input 
-                      name="email" required
-                      type="email" 
-                      placeholder="hello@nodelec.in" 
-                      className="w-full p-3 rounded-xl bg-background border border-border focus:border-primary outline-none transition-all"
+                    <Label htmlFor="email">Work Email</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      required
+                      type="email"
+                      placeholder="hello@nodelec.in"
+                      className="h-12 rounded-xl"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Company Name</label>
-                  <input 
-                    name="company" required
-                    type="text" 
-                    placeholder="Electronics Corp" 
-                    className="w-full p-3 rounded-xl bg-background border border-border focus:border-primary outline-none transition-all"
+                  <Label htmlFor="company">Company Name</Label>
+                  <Input
+                    id="company"
+                    name="company"
+                    required
+                    type="text"
+                    placeholder="Electronics Corp"
+                    className="h-12 rounded-xl"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Message</label>
-                  <textarea 
-                    name="message" required
-                    rows={4} 
-                    placeholder="How can we help you?" 
-                    className="w-full p-3 rounded-xl bg-background border border-border focus:border-primary outline-none transition-all resize-none"
+                  <Label htmlFor="message">Message</Label>
+                  <Textarea
+                    key={prefillMessage ? 'prefilled' : 'empty'}
+                    id="message"
+                    name="message"
+                    required
+                    rows={prefillMessage ? 7 : 4}
+                    defaultValue={prefillMessage}
+                    placeholder="How can we help you?"
+                    className="rounded-xl resize-none"
                   />
                 </div>
 
-                <Button 
+                {error && (
+                  <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-4 py-3">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                <Button
                   type="submit"
                   disabled={isSubmitting}
                   className="w-full py-6 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl flex gap-2"

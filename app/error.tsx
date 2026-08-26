@@ -80,35 +80,6 @@ export default function Error({
             </Link>
           </motion.div>
         </div>
-
-        {/* Circuit Pattern Background */}
-        <div className="absolute inset-0 opacity-5 pointer-events-none">
-          <svg
-            className="w-full h-full"
-            viewBox="0 0 400 400"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <defs>
-              <pattern
-                id="circuit-pattern"
-                x="0"
-                y="0"
-                width="40"
-                height="40"
-                patternUnits="userSpaceOnUse"
-              >
-                <path
-                  d="M20 0V20M0 20H20M20 20V40M20 20H40"
-                  stroke="currentColor"
-                  strokeWidth="0.5"
-                />
-                <circle cx="20" cy="20" r="1" fill="currentColor" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#circuit-pattern)" />
-          </svg>
-        </div>
       </motion.div>
     </div>
   );

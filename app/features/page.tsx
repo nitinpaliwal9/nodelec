@@ -2,9 +2,9 @@
 import FeaturesClient from '@/components/nodelec/features-client';
 
 export const metadata: Metadata = {
-  title: 'Features - AI-Powered BOM Processing | Nodelec',
-  description: 'Discover Nodelec\'s advanced features: AI BOM parsing, multi-channel agents, and real-time inventory matching.',
-  keywords: ['features', 'BOM parsing', 'AI automation', 'electronics distribution'],
+  title: 'Features - RFQ & Quotation Automation | Nodelec',
+  description: 'What Nodelec actually does: BOM extraction from email RFQs, Tally ERP sync, and a human review queue before anything reaches a quote.',
+  keywords: ['RFQ automation', 'BOM parsing', 'ERP integration', 'electronics distribution'],
 };
 
 export default function FeaturesPage() {

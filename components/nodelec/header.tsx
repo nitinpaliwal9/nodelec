@@ -56,25 +56,22 @@ export function Header() {
   };
 
   const navLinks = [
-    { name: 'Solutions', href: '/solutions' },
-    { name: 'Features', href: '/features' },
+    { name: 'Product', href: '/features' },
+    { name: 'How It Works', href: '/#how-it-works' },
+    { name: 'Integrations', href: '/#integrations' },
     { name: 'Pricing', href: '/pricing' },
+    { name: 'Security & FAQ', href: '/pricing#faq' },
   ];
 
   return (
     <>
-      <motion.header
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="fixed top-0 left-0 right-0 z-50 border-b border-border/30 backdrop-blur-md bg-background/80"
-      >
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            
+
             {/* Logo with nodelec_logo.jpg */}
-            <Link href="/" className="flex items-center gap-3 group">
-              <div className="relative w-9 h-9 transition-transform group-hover:scale-105">
+            <Link href="/" className="flex items-center gap-2.5">
+              <div className="relative w-8 h-8 shrink-0">
                 <Image
                   src="/nodelec_logo.jpg"
                   alt="Nodelec Logo"
@@ -83,7 +80,7 @@ export function Header() {
                   priority
                 />
               </div>
-              <span className="font-bold text-xl text-foreground tracking-tight">Nodelec</span>
+              <span className="font-semibold text-lg text-foreground tracking-tight">Nodelec</span>
             </Link>
 
             {/* Desktop Navigation */}
@@ -92,55 +89,46 @@ export function Header() {
                 <Link
                   key={link.name}
                   href={link.href}
-                  className={`text-sm font-medium transition-colors relative ${
+                  className={`text-sm font-medium transition-colors relative py-1 ${
                     pathname === link.href
-                      ? 'text-primary'
+                      ? 'text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   {link.name}
                   {pathname === link.href && (
-                    <motion.div 
-                      layoutId="activeNav"
-                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" 
-                    />
+                    <span className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-primary rounded-full" />
                   )}
                 </Link>
               ))}
             </nav>
 
             {/* Desktop CTA Button */}
-            <div className="hidden md:flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-5">
               <Link
                 href="/login"
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
                 Sign In
               </Link>
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              >
-                <Link href="/contact">
-                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 px-6 font-semibold shadow-lg shadow-primary/20">
-                    Start Your 15-Day Pilot
-                  </Button>
-                </Link>
-              </motion.div>
+              <Link href="/contact">
+                <Button className="px-5 font-medium">
+                  Start a Pilot
+                </Button>
+              </Link>
             </div>
 
             {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-foreground hover:text-primary transition-colors focus:outline-none"
+              className="md:hidden p-2 -mr-2 text-foreground transition-colors focus:outline-none"
               aria-label="Toggle menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
-      </motion.header>
+      </header>
 
       {/* Mobile Menu Backdrop */}
       <AnimatePresence>
@@ -219,8 +207,8 @@ export function Header() {
               className="p-6 border-t border-border/30"
             >
               <Link href="/contact" onClick={() => setMobileMenuOpen(false)}>
-                <Button className="w-full bg-primary text-primary-foreground py-6 text-lg font-bold shadow-xl shadow-primary/20">
-                  Start Your Pilot
+                <Button className="w-full py-6 text-base font-medium">
+                  Start a Pilot
                 </Button>
               </Link>
             </motion.div>

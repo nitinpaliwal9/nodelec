@@ -30,7 +30,7 @@ export default function AboutPage() {
     {
       icon: Target,
       title: 'Precision Engineering',
-      description: 'Every line of code is crafted with the same precision we demand from semiconductor manufacturing.',
+      description: 'Every match is built to be checked, not just trusted — the same precision we expect from the industry we serve.',
     },
     {
       icon: Users,
@@ -39,31 +39,30 @@ export default function AboutPage() {
     },
     {
       icon: Zap,
-      title: 'Lightning Fast',
-      description: 'From BOM receipt to professional quote in 60 seconds. No more waiting days for responses.',
+      title: 'No Re-Entry',
+      description: 'Extracted BOM data flows straight from RFQ to review — no retyping part numbers into a spreadsheet.',
     },
     {
       icon: Globe,
-      title: 'Global Scale',
-      description: 'Built for international semiconductor supply chains with multi-language support and global compliance.',
+      title: 'Real Infrastructure',
+      description: 'A production backend, a live ERP integration, and a real pilot running today — not a concept demo.',
     },
   ];
 
-  const milestones = [
-    { year: '2023', event: 'Founded in Delhi NCR, India' },
-    { year: '2024', event: 'First commercial deployment with leading distributor' },
-    { year: '2024', event: 'Achieved 99.2% BOM parsing accuracy' },
-    { year: '2024', event: 'Expanded to 10+ ERP integrations' },
+  const today = [
+    { title: 'Live pilot in production', description: 'Nodelec is running on a real customer’s catalog today, not a sandbox.' },
+    { title: 'Email intake & Tally ERP sync', description: 'Both are live integrations, actively used, not roadmap items.' },
+    { title: 'Human-verified by default', description: 'Every uncertain match is reviewed by a person before it’s used in a quote.' },
+    { title: 'Actively expanding', description: 'More ERP connectors and intake channels are in active development.' },
   ];
 
   return (
     <div className="bg-background text-foreground min-h-screen">
       {/* Hero Section */}
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-        {/* Background glow effects */}
+        {/* Single restrained ambient wash -- no pulsing */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-primary/10 rounded-full blur-2xl animate-pulse"></div>
-          <div className="absolute bottom-10 left-0 w-96 h-96 bg-primary/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+          <div className="absolute top-0 right-0 w-96 h-96 bg-primary/[0.06] rounded-full blur-3xl"></div>
         </div>
 
         <div className="max-w-7xl mx-auto relative z-10">
@@ -77,7 +76,8 @@ export default function AboutPage() {
               The Nodelec Vision
             </h1>
             <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto">
-              Democratizing AI-first supply chain automation for the semiconductor industry. We're building the future of intelligent distribution.
+              We build AI-assisted RFQ and quotation automation for industrial sales teams &mdash; a real product,
+              running on a real pilot, today.
             </p>
           </motion.div>
         </div>
@@ -97,10 +97,10 @@ export default function AboutPage() {
               Our Mission
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              In the semiconductor industry, every second counts. A delayed quote can mean lost business,
-              while manual BOM processing creates bottlenecks that slow innovation. We're on a mission to
-              eliminate these inefficiencies with AI that thinks like your best sales engineer - but works
-              24/7 with perfect accuracy.
+              In industrial distribution, a delayed or error-prone quote can mean lost business, while manual
+              BOM processing eats up hours that could go toward actually selling. We're on a mission to remove
+              that repetitive work with AI that handles the extraction, matching, and lookups &mdash; while your
+              team stays in control of what actually goes out.
             </p>
           </motion.div>
 
@@ -116,7 +116,7 @@ export default function AboutPage() {
               const Icon = value.icon;
               return (
                 <motion.div key={value.title} variants={itemVariants}>
-                  <div className="bg-gradient-to-br from-card/80 to-secondary/40 border border-primary/20 rounded-3xl p-8 backdrop-blur-xl h-full">
+                  <div className="bg-surface border border-border rounded-2xl p-8 h-full">
                     <div className="inline-flex w-12 h-12 rounded-xl bg-primary/10 items-center justify-center mb-6">
                       <Icon className="w-6 h-6 text-primary" />
                     </div>
@@ -139,26 +139,28 @@ export default function AboutPage() {
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-6 text-center">
               Our Story
             </h2>
-            <div className="bg-gradient-to-br from-card/80 to-secondary/40 border border-primary/20 rounded-3xl p-8 sm:p-12 backdrop-blur-xl">
+            <div className="bg-surface border border-border rounded-2xl p-8 sm:p-12">
               <p className="text-muted-foreground leading-relaxed mb-6">
-                Founded in 2023, Nodelec emerged from the frontlines of semiconductor distribution.
-                Our founders witnessed firsthand how manual processes were crippling growth in an industry
-                that demands perfection and speed.
+                Nodelec started with a simple observation: sales teams at industrial distributors spend a huge
+                share of their time on work that has nothing to do with selling &mdash; re-typing BOM line
+                items, looking up stock and pricing by hand, and reconciling quotes against ERP data before
+                anything can go out.
               </p>
               <p className="text-muted-foreground leading-relaxed mb-6">
-                What started as a simple automation script evolved into a comprehensive AI platform
-                that understands the nuances of BOM processing, supplier negotiations, and customer
-                communication patterns.
+                We built Nodelec to take that work off their plate. The product is live: it reads RFQs from
+                email, extracts and matches BOM line items against real stock and pricing, and routes anything
+                it isn&apos;t confident about to a human reviewer. It syncs with Tally today, with more ERP
+                integrations in active development.
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                Today, we're proud to serve leading semiconductor distributors, OEMs, and EMS providers
-                across Asia and beyond, processing thousands of quotes daily with unprecedented accuracy
-                and speed.
+                We&apos;re an early-stage company running a real pilot on a real production system &mdash; not
+                a concept demo. We&apos;d rather tell you exactly what&apos;s built today than promise more than
+                we can show you.
               </p>
             </div>
           </motion.div>
 
-          {/* Timeline */}
+          {/* Where things stand today */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -167,29 +169,14 @@ export default function AboutPage() {
             className="mb-20"
           >
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-12 text-center">
-              Our Journey
+              Where things stand today
             </h2>
-            <div className="space-y-8">
-              {milestones.map((milestone, index) => (
-                <motion.div
-                  key={milestone.year}
-                  initial={{ opacity: 0, x: index % 2 === 0 ? -50 : 50 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  viewport={{ once: true }}
-                  className="flex items-center gap-8"
-                >
-                  <div className="flex-shrink-0 w-20 text-right">
-                    <span className="text-2xl font-bold text-primary">{milestone.year}</span>
-                  </div>
-                  <div className="flex-1 h-px bg-gradient-to-r from-primary/50 to-transparent"></div>
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <div className="w-3 h-3 rounded-full bg-primary"></div>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-muted-foreground">{milestone.event}</p>
-                  </div>
-                </motion.div>
+            <div className="grid sm:grid-cols-2 gap-6">
+              {today.map((item) => (
+                <div key={item.title} className="rounded-xl border border-border bg-surface p-6">
+                  <p className="font-semibold text-foreground mb-1.5">{item.title}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+                </div>
               ))}
             </div>
           </motion.div>
@@ -211,10 +198,10 @@ export default function AboutPage() {
               <span className="text-sm font-medium text-primary">Built with Purpose</span>
             </div>
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-              Join Us in Transforming Supply Chains
+              See it work on your own RFQs
             </h2>
             <p className="text-lg text-muted-foreground">
-              Be part of the AI revolution in semiconductor distribution. Start your 15-day pilot today.
+              Start a 15-day pilot and judge the output for yourself.
             </p>
           </motion.div>
 

@@ -1,18 +1,26 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { SiteChrome } from '@/components/nodelec/site-chrome'
 
-const geist = Geist({ subsets: ["latin"] });
-const geistMono = Geist_Mono({ subsets: ["latin"] });
+const plexSans = IBM_Plex_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-ibm-plex-sans',
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-ibm-plex-mono',
+});
 
 // Generate dynamic metadata based on route
 export async function generateMetadata({ params }: { params?: { slug?: string } }): Promise<Metadata> {
   const baseUrl = 'https://nodelec.ai'
   const defaultMetadata = {
-    title: 'Nodelec - AI Automation for Semiconductor Distribution',
-    description: 'The first AI engine built to bridge the gap between messy BOMs and ERP efficiency. Convert RFQs to Quotes in 42 seconds.',
+    title: 'Nodelec - AI-Assisted RFQ & Quotation Automation',
+    description: 'Nodelec extracts and matches incoming RFQs against your real stock and pricing, with human review before anything goes out. Email intake and Tally ERP sync, live today.',
     keywords: ['AI', 'semiconductor', 'distribution', 'BOM', 'ERP', 'automation', 'quotes', 'RFQ'],
     authors: [{ name: 'Nodelec Team' }],
     creator: 'Nodelec',
@@ -27,16 +35,16 @@ export async function generateMetadata({ params }: { params?: { slug?: string } 
       canonical: baseUrl,
     },
     openGraph: {
-      title: 'Nodelec - AI Automation for Semiconductor Distribution',
-      description: 'The first AI engine built to bridge the gap between messy BOMs and ERP efficiency. Convert RFQs to Quotes in 42 seconds.',
+      title: 'Nodelec - AI-Assisted RFQ & Quotation Automation',
+      description: 'Nodelec extracts and matches incoming RFQs against your real stock and pricing, with human review before anything goes out. Email intake and Tally ERP sync, live today.',
       url: baseUrl,
       siteName: 'Nodelec',
       images: [
         {
-          url: '/og-image.png',
+          url: '/og-image',
           width: 1200,
           height: 630,
-          alt: 'Nodelec - AI Automation for Semiconductor Distribution',
+          alt: 'Nodelec - AI-Assisted RFQ & Quotation Automation',
         },
       ],
       locale: 'en_US',
@@ -44,9 +52,9 @@ export async function generateMetadata({ params }: { params?: { slug?: string } 
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'Nodelec - AI Automation for Semiconductor Distribution',
-      description: 'The first AI engine built to bridge the gap between messy BOMs and ERP efficiency. Convert RFQs to Quotes in 42 seconds.',
-      images: ['/og-image.png'],
+      title: 'Nodelec - AI-Assisted RFQ & Quotation Automation',
+      description: 'Nodelec extracts and matches incoming RFQs against your real stock and pricing, with human review before anything goes out. Email intake and Tally ERP sync, live today.',
+      images: ['/og-image'],
       creator: '@nodelec_ai',
     },
     robots: {
@@ -91,7 +99,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geist.className} antialiased`}>
+      <body className={`${plexSans.variable} ${plexMono.variable} font-sans antialiased`}>
         <SiteChrome>{children}</SiteChrome>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

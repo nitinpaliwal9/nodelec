@@ -1,12 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { motion, Variants } from 'framer-motion'; // Variants type import kiya
-import { Building2, Factory, Cpu, Truck, ArrowRight, CheckCircle } from 'lucide-react';
+import { motion, Variants } from 'framer-motion';
+import { Mail, FileText, ShieldCheck, Database, FileCheck, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function SolutionsPage() {
-  // Explicitly typing variants to fix TS/runtime errors
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: {
@@ -27,60 +26,36 @@ export default function SolutionsPage() {
     },
   };
 
-  const solutions = [
+  const stages = [
     {
-      icon: Building2,
-      title: 'Semiconductor Distributors',
-      description: 'Transform high-volume BOM processing with AI-powered automation designed specifically for semiconductor distribution.',
-      challenges: [
-        'Complex multi-supplier BOMs',
-        'Time-sensitive quote requirements',
-        'High-volume transaction processing',
-        'Multi-channel customer communication',
-      ],
-      benefits: [
-        '60-second quote generation',
-        '99.2% BOM parsing accuracy',
-        '24/7 automated processing',
-        'Multi-language support',
-      ],
-      metrics: '500+ distributors using Nodelec',
+      icon: Mail,
+      title: 'RFQ Intake',
+      description: 'Capture and structure incoming quotation requests as they arrive by email, with the BOM attached as Excel or PDF.',
+      detail: 'Live today.',
     },
     {
-      icon: Factory,
-      title: 'OEM Manufacturers',
-      description: 'Streamline procurement and quoting workflows for original equipment manufacturers with integrated ERP synchronization.',
-      challenges: [
-        'Complex supply chain coordination',
-        'Multiple vendor negotiations',
-        'Quality assurance requirements',
-        'Cost optimization pressures',
-      ],
-      benefits: [
-        'Automated vendor quote comparison',
-        'Real-time inventory visibility',
-        'Quality compliance tracking',
-        'Cost optimization algorithms',
-      ],
-      metrics: '200+ OEMs optimized',
+      icon: FileText,
+      title: 'BOM Processing',
+      description: 'Extract and normalize part numbers, quantities, and descriptions from the quotation document, then match them against your real stock and pricing.',
+      detail: 'Live today.',
     },
     {
-      icon: Cpu,
-      title: 'EMS Providers',
-      description: 'Accelerate electronics manufacturing services with intelligent BOM processing and automated quoting systems.',
-      challenges: [
-        'Rapid prototyping requirements',
-        'Component availability tracking',
-        'Multi-project coordination',
-        'Quality control standards',
-      ],
-      benefits: [
-        'Instant prototype quoting',
-        'Component availability alerts',
-        'Automated project tracking',
-        'Quality assurance integration',
-      ],
-      metrics: '150+ EMS companies',
+      icon: ShieldCheck,
+      title: 'Human Review',
+      description: 'Anything below a confidence threshold routes to the Review Queue, where your team confirms or rejects the match before it moves forward.',
+      detail: 'Live today.',
+    },
+    {
+      icon: Database,
+      title: 'ERP Workflow',
+      description: 'Stock and pricing data is kept current through a direct sync with your ERP, so every match reflects what you actually have.',
+      detail: 'Tally integration live today; additional connectors in development.',
+    },
+    {
+      icon: FileCheck,
+      title: 'Quotation Preparation',
+      description: 'Once reviewed, validated line items — parts, quantities, and pricing — are ready for your team to turn into a quote.',
+      detail: 'Live today.',
     },
   ];
 
@@ -89,8 +64,7 @@ export default function SolutionsPage() {
       {/* Hero Section */}
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-primary/10 rounded-full blur-2xl animate-pulse"></div>
-          <div className="absolute bottom-10 left-0 w-96 h-96 bg-primary/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+          <div className="absolute top-0 right-0 w-80 h-80 bg-primary/[0.06] rounded-full blur-3xl"></div>
         </div>
 
         <div className="max-w-7xl mx-auto relative z-10">
@@ -101,89 +75,48 @@ export default function SolutionsPage() {
             className="text-center mb-16"
           >
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight" style={{ letterSpacing: '-0.02em' }}>
-              Industry Solutions
+              How Nodelec fits your workflow
             </h1>
             <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto">
-              Tailored automation solutions for semiconductor distributors, OEMs, and EMS providers. Built for your industry's unique challenges.
+              Five stages, from an incoming RFQ to quotation-ready data. Here&apos;s exactly what happens at
+              each one &mdash; and what&apos;s live today versus still in development.
             </p>
           </motion.div>
         </div>
       </section>
 
-      {/* Solutions Grid */}
+      {/* Workflow stages */}
       <section className="pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <motion.div
             variants={containerVariants}
             initial="hidden"
-            whileInView="visible" // "animate" ki jagah whileInView use krna better h
+            whileInView="visible"
             viewport={{ once: true }}
-            className="space-y-20"
+            className="space-y-4"
           >
-            {solutions.map((solution, index) => {
-              const Icon = solution.icon;
+            {stages.map((stage, index) => {
+              const Icon = stage.icon;
               return (
-                <motion.div key={solution.title} variants={itemVariants}>
-                  <div className="grid lg:grid-cols-2 gap-12 items-center">
-                    {/* Content */}
-                    <div className={index % 2 === 1 ? 'lg:order-2' : ''}>
-                      <div className="inline-flex w-16 h-16 rounded-2xl bg-primary/10 items-center justify-center mb-6">
-                        <Icon className="w-8 h-8 text-primary" />
+                <motion.div key={stage.title} variants={itemVariants}>
+                  <div className="flex gap-5 rounded-2xl border border-border bg-surface p-6 sm:p-8">
+                    <div className="flex-shrink-0 flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                        <Icon className="w-5 h-5 text-primary" />
                       </div>
-
-                      <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-                        {solution.title}
-                      </h2>
-
-                      <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
-                        {solution.description}
-                      </p>
-
-                      <div className="grid sm:grid-cols-2 gap-8 mb-8">
-                        <div>
-                          <h3 className="text-lg font-semibold text-foreground mb-4">Key Challenges</h3>
-                          <ul className="space-y-2">
-                            {solution.challenges.map((challenge, challengeIndex) => (
-                              <li key={challengeIndex} className="text-sm text-muted-foreground flex items-start gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-destructive mt-2 flex-shrink-0"></span>
-                                {challenge}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div>
-                          <h3 className="text-lg font-semibold text-foreground mb-4">Nodelec Benefits</h3>
-                          <ul className="space-y-2">
-                            {solution.benefits.map((benefit, benefitIndex) => (
-                              <li
-                                key={benefitIndex}
-                                className="text-sm text-muted-foreground flex items-start gap-2"
-                              >
-                                <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                                {benefit}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
-                        <Truck className="w-4 h-4 text-primary" />
-                        <span className="text-sm font-medium text-primary">{solution.metrics}</span>
-                      </div>
+                      {index < stages.length - 1 && (
+                        <div className="hidden sm:block w-px flex-1 bg-border" />
+                      )}
                     </div>
-
-                    {/* Visual */}
-                    <div className={index % 2 === 1 ? 'lg:order-1' : ''}>
-                      <div className="relative">
-                        <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 rounded-3xl blur-2xl opacity-60"></div>
-                        <div className="relative bg-gradient-to-br from-card/80 to-secondary/40 border border-primary/20 rounded-3xl p-8 backdrop-blur-xl">
-                          <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 flex items-center justify-center">
-                            <Icon className="w-24 h-24 text-primary/60" />
-                          </div>
-                        </div>
-                      </div>
+                    <div className="pb-2">
+                      <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1">
+                        Stage {index + 1}
+                      </p>
+                      <h2 className="text-xl font-semibold text-foreground mb-2">{stage.title}</h2>
+                      <p className="text-base text-muted-foreground leading-relaxed mb-3">
+                        {stage.description}
+                      </p>
+                      <p className="text-xs font-mono text-primary">{stage.detail}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -194,7 +127,7 @@ export default function SolutionsPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-transparent via-primary/5 to-transparent">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-border">
         <div className="max-w-4xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -204,10 +137,10 @@ export default function SolutionsPage() {
             className="mb-8"
           >
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-              Ready to Join Industry Leaders?
+              Want to see this run on your own RFQs?
             </h2>
             <p className="text-lg text-muted-foreground">
-              See how Nodelec is transforming semiconductor supply chains across the industry.
+              Start a 15-day pilot with your real BOMs and real ERP data.
             </p>
           </motion.div>
 
@@ -218,15 +151,15 @@ export default function SolutionsPage() {
             viewport={{ once: true }}
             className="flex flex-col sm:flex-row gap-4 justify-center"
           >
-            <Link href="/pricing">
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-3">
-                View Pricing
+            <Link href="/contact">
+              <Button className="px-8 py-3">
+                Start Your 15-Day Pilot
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
-            <Link href="/contact">
-              <Button variant="outline" className="border-primary/30 text-foreground hover:bg-primary/10 px-8 py-3">
-                Start Your 15-Day Pilot
+            <Link href="/pricing">
+              <Button variant="outline" className="px-8 py-3">
+                View Pricing
               </Button>
             </Link>
           </motion.div>
